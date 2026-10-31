@@ -1,5 +1,6 @@
 import React, { Suspense, lazy } from "react";
 import StudentPortal from "./pages/StudentPortal.jsx";
+import ThemeToggle from "./ThemeToggle.jsx";
 import { isConfigured } from "./firebase.js";
 
 const TeacherApp = lazy(() => import("./pages/teacher/TeacherApp.jsx"));
@@ -18,7 +19,7 @@ function NotConfigured() {
   );
 }
 
-export default function App() {
+function Page() {
   if (!isConfigured) return <NotConfigured />;
   const isTeacher = window.location.pathname.replace(/\/+$/, "").startsWith("/teacher");
   if (isTeacher) {
@@ -29,4 +30,13 @@ export default function App() {
     );
   }
   return <StudentPortal />;
+}
+
+export default function App() {
+  return (
+    <>
+      <ThemeToggle />
+      <Page />
+    </>
+  );
 }
