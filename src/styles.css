@@ -29,6 +29,10 @@ input[type=checkbox] { width: auto; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .right { text-align: right; white-space: nowrap; }
 .toolbar { margin-bottom: 12px; }
+.logo { width: 64px; height: auto; display: block; }
+.login > .logo { margin: 0 auto; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand .logo { width: 52px; flex: none; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .muted { color: var(--muted); } .small { font-size: .82rem; } .note { text-align: center; }
 .error { color: var(--bad); margin: 0; } .ok { color: var(--ok); } .bad { color: var(--bad); }

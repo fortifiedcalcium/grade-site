@@ -51,6 +51,7 @@ function SignIn() {
   return (
     <main className="shell narrow">
       <form className="card login" onSubmit={submit}>
+        <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
         <h1>{register ? "Create instructor account" : "Instructor sign in"}</h1>
         <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" /></label>
         <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={register ? "new-password" : "current-password"} /></label>
@@ -114,9 +115,12 @@ function Dashboard({ user }) {
   return (
     <main className="shell wide">
       <header className="topbar">
-        <div>
-          <h1>Grade Portal – Instructor</h1>
-          <p className="muted small">{user.email}</p>
+        <div className="brand">
+          <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
+          <div>
+            <h1>Grade Portal – Instructor</h1>
+            <p className="muted small">{user.email}</p>
+          </div>
         </div>
         <div className="row">
           <a className="btn ghost" href="/">Student view</a>

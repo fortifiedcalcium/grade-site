@@ -20,9 +20,12 @@ function GradeView({ data, onRefresh, onLogout, busy }) {
   return (
     <main className="shell">
       <header className="topbar">
-        <div>
+        <div className="brand">
+          <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
+          <div>
           <h1>{meta.title || "Student Grade Portal"}</h1>
           {meta.term && <p className="muted">{meta.term}</p>}
+          </div>
         </div>
         <div className="row">
           <button className="btn" onClick={onRefresh} disabled={busy}>{busy ? "Refreshing…" : "Refresh"}</button>
@@ -173,6 +176,7 @@ export default function StudentPortal() {
   return (
     <main className="shell narrow">
       <form className="card login" onSubmit={submit}>
+        <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
         <h1>Student Grade Portal</h1>
         <p className="muted">Enter your student number and the PIN your instructor gave you.</p>
         <label>
