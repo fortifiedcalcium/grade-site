@@ -1,9 +1,9 @@
 :root {
-  --bg: #f3f6f3; --card: #fff; --ink: #1c2a21; --muted: #5f6f65; --line: #dbe4dd;
-  --brand: #1f6b46; --brand-ink: #fff; --ok: #1a7a43; --bad: #b3261e; --hl: #e6f3ea; --warn: #fff4d6;
+  --bg: #faf6f5; --card: #fff; --ink: #231a1a; --muted: #675a5a; --line: #e0d3d1; --field: #85726f;
+  --brand: #601818; --brand-ink: #fff; --ok: #1a6b3a; --bad: #a8201a; --hl: #f6e9e7; --warn: #fff4d6;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #111815; --card: #1a241f; --ink: #e6efe9; --muted: #9bb0a3; --line: #2b3a32; --brand: #3fa876; --brand-ink: #08130d; --ok: #5fcf8e; --bad: #ff8a80; --hl: #1f3a2b; --warn: #3b3318; }
+  :root { --bg: #1a1212; --card: #251a1a; --ink: #f1e8e6; --muted: #c2b0ad; --line: #4a3636; --field: #9c8784; --brand: #e8a0a0; --brand-ink: #2a0a0a; --ok: #6fd49a; --bad: #ff9a92; --hl: #3a2222; --warn: #3b3318; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
@@ -17,10 +17,10 @@ h1 { font-size: 1.35rem; margin: 0; } h2 { font-size: 1.05rem; margin: 0 0 .6rem
 .login { display: grid; gap: 12px; }
 label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
 label.inline { display: inline-flex; align-items: center; gap: 6px; grid-auto-flow: column; }
-input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; min-width: 0; }
-input:focus, select:focus, button:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--field); border-radius: 8px; padding: 9px 10px; min-width: 0; }
+input:focus, select:focus, button:focus-visible, a:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
 input[type=checkbox] { width: auto; }
-.btn { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 8px 14px; cursor: pointer; text-decoration: none; display: inline-block; }
+.btn { font: inherit; border: 1px solid var(--field); background: var(--card); color: var(--ink); border-radius: 8px; padding: 8px 14px; cursor: pointer; text-decoration: none; display: inline-block; }
 .btn.primary { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); font-weight: 600; }
 .btn.ghost { background: transparent; }
 .btn.small { padding: 3px 9px; font-size: .8rem; }
@@ -31,6 +31,7 @@ input[type=checkbox] { width: auto; }
 .toolbar { margin-bottom: 12px; }
 .logo { width: 64px; height: auto; display: block; }
 .login > .logo { margin: 0 auto; }
+@media (prefers-color-scheme: dark) { .logo { background: #fff; border-radius: 50%; padding: 4px; } }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand .logo { width: 52px; flex: none; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
