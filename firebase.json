@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "bulsu-cict-grades",
     "public": "dist",
     "ignore": [
       "firebase.json",
