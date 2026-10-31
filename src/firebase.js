@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getDatabase, connectDatabaseEmulator } from "firebase/database";
-import { getAuth, connectAuthEmulator } from "firebase/auth";
+import { initializeAuth, browserSessionPersistence, connectAuthEmulator } from "firebase/auth";
 
 const env = import.meta.env;
 
@@ -34,7 +34,8 @@ export function getDb() {
 let auth = null;
 export function getAuthInstance() {
   if (!auth) {
-    auth = getAuth(getFirebaseApp());
+    // Session persistence: the instructor signs in again on every new visit (closing the tab signs out).
+    auth = initializeAuth(getFirebaseApp(), { persistence: browserSessionPersistence });
     if (useEmulator) connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   }
   return auth;

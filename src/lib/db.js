@@ -72,22 +72,30 @@ export function listen(db, path, onValueCb, onError) {
   return onValue(ref(db, path), (s) => onValueCb(s.val()), onError);
 }
 
-/* Asks the live connection first. If that does not answer in a few seconds (blocked websockets, strict
-   networks) it falls back to a plain HTTPS request with the user's ID token, which gives the same answer
-   under the same rules. Throws if neither works so the page can show a retry instead of hanging. */
-export async function isTeacher(db, user) {
-  try {
-    const snap = await withTimeout(get(ref(db, "admins/" + user.uid)), 8000);
-    return snap.val() === true;
-  } catch (e) {
-    if (e && /permission[_ ]denied/i.test(String(e.code) + " " + e.message)) return false;
+/* Checks admins/<uid> two ways at once and uses whichever answers first: the live connection, and a plain
+   HTTPS request with the user's ID token (same rules, no websocket needed). A blocked or slow websocket
+   therefore cannot leave the page waiting. Throws only if both fail, so the page can show a retry. */
+export function isTeacher(db, user) {
+  const viaSdk = async () => {
+    try {
+      return (await get(ref(db, "admins/" + user.uid))).val() === true;
+    } catch (e) {
+      if (/permission[_ ]denied/i.test(String(e && e.code) + " " + (e && e.message))) return false;
+      throw e;
+    }
+  };
+  const viaHttp = async () => {
     const token = await user.getIdToken();
     const base = db.app.options.databaseURL.replace(/\/+$/, "");
-    const res = await withTimeout(fetch(base + "/admins/" + encodeURIComponent(user.uid) + ".json?auth=" + encodeURIComponent(token)), 10000);
+    const res = await fetch(base + "/admins/" + encodeURIComponent(user.uid) + ".json?auth=" + encodeURIComponent(token));
     if (res.status === 401 || res.status === 403) return false;
     if (!res.ok) throw Object.assign(new Error("HTTP " + res.status), { code: "http" + res.status });
     return (await res.json()) === true;
-  }
+  };
+  return withTimeout(
+    Promise.any([viaSdk(), viaHttp()]).catch((agg) => { throw (agg && agg.errors && agg.errors[agg.errors.length - 1]) || agg; }),
+    15000
+  );
 }
 
 export function saveScore(db, key, itemKey, value) {
