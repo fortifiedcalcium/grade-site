@@ -10,7 +10,7 @@ export const KEY_ITERATIONS = 100000;
 
 export const normId = (s) => String(s == null ? "" : s).trim().toUpperCase().replace(/\s+/g, "");
 export const normPin = normId;
-/* Firebase paths cannot contain . $ # [ ] / */
+/* Student numbers are reduced to a safe set of characters (the keys were made this way, so it must not change) */
 export const safeId = (id) => normId(id).replace(/[.$#[\]/]/g, "-");
 
 const hex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");

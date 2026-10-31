@@ -1,18 +1,21 @@
-/* All reads and writes to Firebase Realtime Database.
+/* All reads and writes to the Supabase (Postgres) database. The tables and the access rules are in
+   supabase/schema.sql.
 
    Data layout
      meta                 page title, term, note, secret salt          (anyone can read)
      sections/<id>        section details + grading scheme             (anyone can read)
      records/<key>        one student's scores; <key> comes from student number + PIN
-                          (anyone can read ONE record if they know the key, nobody can list them)
-     roster/<studentId>   name, section, PIN and key                   (teacher only)
-     admins/<uid>         true for teacher accounts                    (set by hand in the Firebase console) */
+                          (a student can fetch ONE record if they know the key; nobody can list them)
+     roster/<studentId>   name, section, PIN and key                   (instructors only)
+     admins               user ids of instructor accounts              (added by hand in the SQL editor)
 
-import { ref, get, set, update, remove, onValue, goOnline, goOffline, serverTimestamp } from "firebase/database";
+   The screens work with plain objects shaped like this (maps keyed by id), so each table's rows are
+   converted on the way in. Times are milliseconds since 1970. */
+
 import { recordKey, makePin, makeSalt, safeId, normId } from "./keys.js";
 import { DEFAULT_SCALE, DEFAULT_SCALE_NOTE } from "./grading.js";
 
-const clean = (obj) => JSON.parse(JSON.stringify(obj)); // drops undefined, which Firebase rejects
+const clean = (obj) => JSON.parse(JSON.stringify(obj)); // drops undefined
 
 export function withTimeout(promise, ms = 20000) {
   let t;
@@ -22,185 +25,132 @@ export function withTimeout(promise, ms = 20000) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
 }
 
+const ms = (t) => (t ? Date.parse(t) : null);
+const unwrap = ({ data, error }) => {
+  if (error) throw error;
+  return data;
+};
+
+const toMeta = (r) => (r ? { title: r.title, term: r.term, note: r.note, salt: r.salt, updated: ms(r.updated) } : null);
+const toSections = (rows) => Object.fromEntries((rows || []).map((r) => [r.id, r.data]));
+
 /* ---------------------------- student side ---------------------------- */
 
 export function createStudentApi(db) {
-  // Students only need a connection while they fetch. Closing it keeps well below Firebase's
-  // free limit of 100 simultaneous connections when a whole class opens the page at once.
-  const online = async (fn) => {
-    goOnline(db);
-    try {
-      return await withTimeout(fn());
-    } finally {
-      goOffline(db);
-    }
+  const fetchPublic = async () => {
+    const [m, s] = await Promise.all([
+      db.from("meta").select("*").eq("id", 1).maybeSingle(),
+      db.from("sections").select("id, data"),
+    ]);
+    return { meta: toMeta(unwrap(m)), sections: toSections(unwrap(s)) };
   };
 
-  const fetchPublic = async () => {
-    const [m, s] = await Promise.all([get(ref(db, "meta")), get(ref(db, "sections"))]);
-    return { meta: m.val() || null, sections: s.val() || {} };
+  const fetchRecord = async (key) => {
+    const record = unwrap(await db.rpc("get_record", { p_key: key }));
+    if (!record) throw Object.assign(new Error("no match"), { code: "nomatch" });
+    return record;
   };
 
   return {
-    loadMeta: () => online(async () => (await get(ref(db, "meta"))).val() || null),
+    loadMeta: () => withTimeout(fetchPublic().then((x) => x.meta)),
 
     login: (idInput, pinInput) =>
-      online(async () => {
-        const { meta, sections } = await fetchPublic();
-        if (!meta || !meta.salt) throw Object.assign(new Error("not published"), { code: "notpublished" });
-        const key = await recordKey(meta.salt, idInput, pinInput);
-        const snap = await get(ref(db, "records/" + key));
-        if (!snap.exists()) throw Object.assign(new Error("no match"), { code: "nomatch" });
-        const record = snap.val();
-        return { key, meta, record, section: sections[record.sec] || null };
-      }),
+      withTimeout(
+        (async () => {
+          const { meta, sections } = await fetchPublic();
+          if (!meta || !meta.salt) throw Object.assign(new Error("not published"), { code: "notpublished" });
+          const key = await recordKey(meta.salt, idInput, pinInput);
+          const record = await fetchRecord(key);
+          return { key, meta, record, section: sections[record.sec] || null };
+        })()
+      ),
 
     refresh: (key) =>
-      online(async () => {
-        const { meta, sections } = await fetchPublic();
-        const snap = await get(ref(db, "records/" + key));
-        if (!snap.exists()) throw Object.assign(new Error("no match"), { code: "nomatch" });
-        const record = snap.val();
-        return { key, meta, record, section: sections[record.sec] || null };
-      }),
+      withTimeout(
+        (async () => {
+          const { meta, sections } = await fetchPublic();
+          const record = await fetchRecord(key);
+          return { key, meta, record, section: sections[record.sec] || null };
+        })()
+      ),
   };
 }
 
 /* ---------------------------- teacher side ---------------------------- */
 
+const SOURCES = {
+  meta: { table: "meta", pk: "id", shape: (rows) => toMeta([...rows.values()][0]) },
+  sections: { table: "sections", pk: "id", shape: (rows) => toSections([...rows.values()]) },
+  roster: {
+    table: "roster", pk: "student_id",
+    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.student_id, { name: r.name, sec: r.sec, pin: r.pin, key: r.key }])),
+  },
+  records: {
+    table: "records", pk: "key",
+    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.key, { id: r.student_id, name: r.name, sec: r.sec, s: r.s || {}, updated: ms(r.updated) }])),
+  },
+};
+
+const POLL_MS = 30000;
+
+/* Calls onValueCb with the whole table now and again whenever it changes. Realtime events patch the
+   copy in memory; a slow refresh is a safety net in case realtime is off or the connection drops.
+   Returns a function that stops listening. */
 export function listen(db, path, onValueCb, onError) {
-  return onValue(ref(db, path), (s) => onValueCb(s.val()), onError);
+  const src = SOURCES[path];
+  let rows = new Map();
+  let alive = true;
+  const emit = () => alive && onValueCb(src.shape(rows));
+
+  const load = async () => {
+    const { data, error } = await db.from(src.table).select("*");
+    if (!alive) return;
+    if (error) return onError && onError(error);
+    rows = new Map(data.map((r) => [r[src.pk], r]));
+    emit();
+  };
+
+  const channel = db
+    .channel("rt-" + path + "-" + Math.random().toString(36).slice(2))
+    .on("postgres_changes", { event: "*", schema: "public", table: src.table }, (p) => {
+      if (p.eventType === "DELETE") rows.delete(p.old[src.pk]);
+      else rows.set(p.new[src.pk], p.new);
+      emit();
+    })
+    .subscribe((status) => { if (status === "SUBSCRIBED") load(); });
+
+  load();
+  const timer = setInterval(load, POLL_MS);
+  return () => {
+    alive = false;
+    clearInterval(timer);
+    db.removeChannel(channel);
+  };
 }
 
-/* Checks admins/<uid> two ways at once and uses whichever answers first: the live connection, and a plain
-   HTTPS request with the user's ID token (same rules, no websocket needed). A blocked or slow websocket
-   therefore cannot leave the page waiting. Throws only if both fail, so the page can show a retry. */
-export function isTeacher(db, user) {
-  const viaSdk = async () => {
-    try {
-      return (await get(ref(db, "admins/" + user.uid))).val() === true;
-    } catch (e) {
-      if (/permission[_ ]denied/i.test(String(e && e.code) + " " + (e && e.message))) return false;
-      throw e;
-    }
-  };
-  const viaHttp = async () => {
-    const token = await user.getIdToken();
-    const base = db.app.options.databaseURL.replace(/\/+$/, "");
-    const res = await fetch(base + "/admins/" + encodeURIComponent(user.uid) + ".json?auth=" + encodeURIComponent(token));
-    if (res.status === 401 || res.status === 403) return false;
-    if (!res.ok) throw Object.assign(new Error("HTTP " + res.status), { code: "http" + res.status });
-    return (await res.json()) === true;
-  };
-  return withTimeout(
-    Promise.any([viaSdk(), viaHttp()]).catch((agg) => { throw (agg && agg.errors && agg.errors[agg.errors.length - 1]) || agg; }),
-    15000
-  );
+export async function isTeacher(db, user) {
+  const row = unwrap(await withTimeout(db.from("admins").select("user_id").eq("user_id", user.id).maybeSingle(), 15000));
+  return Boolean(row);
 }
 
-export function saveScore(db, key, itemKey, value) {
-  return update(ref(db), {
-    ["records/" + key + "/s/" + itemKey]: value === undefined ? null : value,
-    ["records/" + key + "/updated"]: serverTimestamp(),
-  });
+export async function saveScore(db, key, itemKey, value) {
+  unwrap(await db.rpc("set_score", { p_key: key, p_item: itemKey, p_value: value === undefined ? null : value }));
 }
 
 export async function ensureSalt(db, meta) {
   if (meta && meta.salt) return meta.salt;
   const salt = makeSalt();
-  await update(ref(db, "meta"), { salt });
+  unwrap(await db.from("meta").upsert({ id: 1, salt }));
   return salt;
 }
 
-export function saveMeta(db, { title, term, note }) {
-  return update(ref(db, "meta"), { title: title || "", term: term || "", note: note || "", updated: serverTimestamp() });
+export async function saveMeta(db, { title, term, note }) {
+  unwrap(await db.from("meta").upsert({ id: 1, title: title || "", term: term || "", note: note || "", updated: new Date().toISOString() }));
 }
 
-export function saveSection(db, id, section) {
+export async function saveSection(db, id, section) {
   const { count, ...rest } = section; // eslint-disable-line no-unused-vars
-  return set(ref(db, "sections/" + id), clean(rest));
-}
-
-const slugId = (text) => String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
-
-/* A new section starts with the usual lecture weights and one item per category; edit them in Settings. */
-export function blankScheme() {
-  const cat = (id, title, weight, label, max) => ({ id, title, weight, items: [{ k: id + "1", label, max }] });
-  return {
-    categories: [
-      cat("exams", "Term Examinations", 30, "Exam", 100),
-      cat("attendance", "Attendance / Participation", 10, "Attendance", 100),
-      cat("activities", "Activities", 20, "Activity 1", 100),
-      cat("project", "Project", 20, "Project", 100),
-      cat("quizzes", "Quizzes", 20, "Quiz 1", 100),
-    ],
-    scale: DEFAULT_SCALE,
-    scaleNote: DEFAULT_SCALE_NOTE,
-    passEquiv: 3,
-    finalCategory: null,
-    holdFinal: false,
-  };
-}
-
-export async function addSection(db, sections, name) {
-  const title = String(name || "").trim();
-  if (!title) throw new Error("Enter a section name.");
-  if (Object.values(sections || {}).some((x) => (x.name || "").toLowerCase() === title.toLowerCase())) throw new Error("A section with that name already exists.");
-  const base = slugId(title) || "section";
-  let id = base, n = 2;
-  while ((sections || {})[id]) id = base + "-" + n++;
-  await set(ref(db, "sections/" + id), clean({ name: title, headings: [], subject: { code: "", desc: "" }, instructor: "", roomTime: "", scheme: blankScheme() }));
-  return id;
-}
-
-/* Removes the section and every student in it, with their scores. */
-export async function deleteSection(db, id, roster) {
-  const updates = { ["sections/" + id]: null };
-  let count = 0;
-  Object.entries(roster || {}).forEach(([sid, r]) => {
-    if (r.sec !== id) return;
-    updates["roster/" + sid] = null;
-    if (r.key) updates["records/" + r.key] = null;
-    count++;
-  });
-  await update(ref(db), updates);
-  return count;
-}
-
-/* Item keys are never reused, so a deleted item's old scores cannot reappear under a new item. */
-export const newItemKey = (catId) => catId + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-export const newCategoryId = (title) => (slugId(title) || "cat") + "_" + Date.now().toString(36);
-
-export async function addStudent(db, meta, { id, name, sec }) {
-  const sid = safeId(id);
-  if (!sid || !name.trim()) throw new Error("Enter a student number and a name.");
-  const salt = await ensureSalt(db, meta);
-  const pin = makePin();
-  const key = await recordKey(salt, sid, pin);
-  await update(ref(db), {
-    ["records/" + key]: { id: sid, name: name.trim(), sec, updated: serverTimestamp() },
-    ["roster/" + sid]: { name: name.trim(), sec, pin, key },
-  });
-  return { id: sid, pin };
-}
-
-export async function removeStudent(db, id, key) {
-  await update(ref(db), { ["records/" + key]: null, ["roster/" + id]: null });
-}
-
-export async function resetPin(db, meta, id, entry) {
-  const salt = await ensureSalt(db, meta);
-  const pin = makePin();
-  const key = await recordKey(salt, id, pin);
-  const old = await get(ref(db, "records/" + entry.key));
-  const rec = old.val() || { id, name: entry.name, sec: entry.sec };
-  await update(ref(db), {
-    ["records/" + entry.key]: null,
-    ["records/" + key]: { ...rec, updated: serverTimestamp() },
-    ["roster/" + id + "/pin"]: pin,
-    ["roster/" + id + "/key"]: key,
-  });
-  return pin;
+  unwrap(await db.from("sections").upsert({ id, data: clean(rest), updated: new Date().toISOString() }));
 }
 
 /* Settings the teacher edited in the app win over what the workbook says. */
@@ -241,25 +191,87 @@ export function mergeSection(existing, incoming) {
   };
 }
 
+const slugId = (text) => String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+
+/* A new section starts with the usual lecture weights and one item per category; edit them in Settings. */
+export function blankScheme() {
+  const cat = (id, title, weight, label, max) => ({ id, title, weight, items: [{ k: id + "1", label, max }] });
+  return {
+    categories: [
+      cat("exams", "Term Examinations", 30, "Exam", 100),
+      cat("attendance", "Attendance / Participation", 10, "Attendance", 100),
+      cat("activities", "Activities", 20, "Activity 1", 100),
+      cat("project", "Project", 20, "Project", 100),
+      cat("quizzes", "Quizzes", 20, "Quiz 1", 100),
+    ],
+    scale: DEFAULT_SCALE,
+    scaleNote: DEFAULT_SCALE_NOTE,
+    passEquiv: 3,
+    finalCategory: null,
+    holdFinal: false,
+  };
+}
+
+export async function addSection(db, sections, name) {
+  const title = String(name || "").trim();
+  if (!title) throw new Error("Enter a section name.");
+  if (Object.values(sections || {}).some((x) => (x.name || "").toLowerCase() === title.toLowerCase())) throw new Error("A section with that name already exists.");
+  const base = slugId(title) || "section";
+  let id = base, n = 2;
+  while ((sections || {})[id]) id = base + "-" + n++;
+  await saveSection(db, id, { name: title, headings: [], subject: { code: "", desc: "" }, instructor: "", roomTime: "", scheme: blankScheme() });
+  return id;
+}
+
+/* Removes the section and every student in it, with their scores. Returns how many students went. */
+export async function deleteSection(db, id) {
+  return unwrap(await db.rpc("delete_section", { p_id: id }));
+}
+
+/* Item keys are never reused, so a deleted item's old scores cannot reappear under a new item. */
+export const newItemKey = (catId) => catId + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+export const newCategoryId = (title) => (slugId(title) || "cat") + "_" + Date.now().toString(36);
+
+export async function addStudent(db, meta, { id, name, sec }) {
+  const sid = safeId(id);
+  if (!sid || !name.trim()) throw new Error("Enter a student number and a name.");
+  const salt = await ensureSalt(db, meta);
+  const pin = makePin();
+  const key = await recordKey(salt, sid, pin);
+  unwrap(await db.rpc("upsert_students", { p_rows: [{ id: sid, name: name.trim(), sec, pin, key }] }));
+  return { id: sid, pin };
+}
+
+export async function removeStudent(db, id, key) {
+  unwrap(await db.rpc("delete_students", { p_rows: [{ id, key }] }));
+}
+
+export async function resetPin(db, meta, id, entry) {
+  const salt = await ensureSalt(db, meta);
+  const pin = makePin();
+  const key = await recordKey(salt, id, pin);
+  unwrap(await db.rpc("reset_pin", { p_id: id, p_old_key: entry.key, p_new_key: key, p_pin: pin }));
+  return pin;
+}
+
 /* Writes imported sections and students. Students already in the roster keep their PIN. */
 export async function importData(db, parsed, { meta, sections, roster, details, removeMissing, onProgress }) {
   const salt = (meta && meta.salt) || makeSalt();
   const rosterNow = roster || {};
-  const updates = {
-    "meta/salt": salt,
-    "meta/title": details.title || "",
-    "meta/term": details.term || "",
-    "meta/note": details.note || "",
-    "meta/updated": serverTimestamp(),
-  };
-  parsed.sections.forEach((sec) => {
+  const now = new Date().toISOString();
+
+  unwrap(await db.from("meta").upsert({ id: 1, salt, title: details.title || "", term: details.term || "", note: details.note || "", updated: now }));
+
+  const sectionRows = parsed.sections.map((sec) => {
     const merged = mergeSection((sections || {})[sec.id], sec);
     const { count, ...rest } = merged; // eslint-disable-line no-unused-vars
-    updates["sections/" + sec.id] = clean(rest);
+    return { id: sec.id, data: clean(rest), updated: now };
   });
+  if (sectionRows.length) unwrap(await db.from("sections").upsert(sectionRows));
 
   let created = 0, kept = 0;
   const seen = new Set();
+  const rows = [];
   for (let i = 0; i < parsed.students.length; i++) {
     const st = parsed.students[i];
     seen.add(st.id);
@@ -274,28 +286,23 @@ export async function importData(db, parsed, { meta, sections, roster, details, 
       key = await recordKey(salt, st.id, pin);
       created++;
     }
-    updates["records/" + key] = clean({ id: st.id, name: st.name, sec: st.sec, s: st.s, updated: serverTimestamp() });
-    updates["roster/" + st.id] = { name: st.name, sec: st.sec, pin, key };
+    rows.push(clean({ id: st.id, name: st.name, sec: st.sec, pin, key, s: st.s || {} }));
     if (onProgress) onProgress(i + 1, parsed.students.length);
+  }
+
+  // write in chunks so very large classes stay under request size limits
+  for (let i = 0; i < rows.length; i += 200) {
+    unwrap(await db.rpc("upsert_students", { p_rows: rows.slice(i, i + 200) }));
   }
 
   let removed = 0;
   if (removeMissing) {
-    Object.entries(rosterNow).forEach(([id, ex]) => {
-      if (!seen.has(id)) {
-        updates["records/" + ex.key] = null;
-        updates["roster/" + id] = null;
-        removed++;
-      }
-    });
+    const gone = Object.entries(rosterNow).filter(([id]) => !seen.has(id)).map(([id, ex]) => ({ id, key: ex.key }));
+    for (let i = 0; i < gone.length; i += 200) unwrap(await db.rpc("delete_students", { p_rows: gone.slice(i, i + 200) }));
+    removed = gone.length;
   }
 
-  // write in chunks so very large classes stay under Firebase's request size limits
-  const entries = Object.entries(updates);
-  for (let i = 0; i < entries.length; i += 300) {
-    await update(ref(db), Object.fromEntries(entries.slice(i, i + 300)));
-  }
   return { created, kept, removed, total: parsed.students.length };
 }
 
-export { normId, safeId, remove };
+export { normId, safeId };

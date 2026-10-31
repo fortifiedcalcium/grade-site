@@ -1,7 +1,7 @@
 import React, { Suspense, lazy } from "react";
 import StudentPortal from "./pages/StudentPortal.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
-import { isConfigured } from "./firebase.js";
+import { isConfigured } from "./supabase.js";
 
 const TeacherApp = lazy(() => import("./pages/teacher/TeacherApp.jsx"));
 
@@ -9,10 +9,10 @@ function NotConfigured() {
   return (
     <main className="shell narrow">
       <div className="card">
-        <h1>Firebase is not set up yet</h1>
+        <h1>The database is not set up yet</h1>
         <p>
-          Copy <code>.env.example</code> to <code>.env</code> and fill in your Firebase project values
-          (or add them as Environment Variables in Vercel), then rebuild. See the README for the steps.
+          Copy <code>.env.example</code> to <code>.env</code> and fill in your Supabase project URL and anon key,
+          then rebuild. See the README for the steps.
         </p>
       </div>
     </main>

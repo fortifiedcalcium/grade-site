@@ -4,3 +4,8 @@ dist
 .env.local
 *.log
 .firebase
+
+# private data exported from the old database (names, PINs)
+supabase/seed.local.sql
+*.fb-export.json
+fb-export.json

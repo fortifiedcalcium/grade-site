@@ -3,12 +3,15 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 
-vi.mock("../src/firebase.js", () => ({ isConfigured: true, getAuthInstance: () => ({}), getDb: () => ({}) }));
-vi.mock("firebase/auth", () => ({
-  onAuthStateChanged: (_auth, cb) => { cb(null); return () => {}; },
-  signInWithEmailAndPassword: vi.fn(),
-  createUserWithEmailAndPassword: vi.fn(),
-  signOut: vi.fn(),
+vi.mock("../src/supabase.js", () => ({
+  isConfigured: true,
+  getDb: () => ({}),
+  getAuth: () => ({
+    onAuthStateChange: (cb) => { cb("INITIAL_SESSION", null); return { data: { subscription: { unsubscribe() {} } } }; },
+    signInWithPassword: vi.fn(),
+    signUp: vi.fn(),
+    signOut: vi.fn(),
+  }),
 }));
 
 beforeEach(() => {

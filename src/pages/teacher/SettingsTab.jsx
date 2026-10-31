@@ -30,7 +30,7 @@ function SectionEditor({ db, id, section, roster }) {
   const removeSection = async () => {
     const ok = window.confirm('Delete the section "' + s.name + '"' + (students ? " and its " + students + " student" + (students === 1 ? "" : "s") + ", with all scores" : "") + "? This cannot be undone.");
     if (!ok) return;
-    try { await deleteSection(db, id, roster); setDeleted(true); } catch (e) { setMsg("Not deleted: " + e.message); }
+    try { await deleteSection(db, id); setDeleted(true); } catch (e) { setMsg("Not deleted: " + e.message); }
   };
   if (deleted) return null;
   const total = s.scheme.categories.reduce((a, c) => a + (Number(c.weight) || 0), 0);

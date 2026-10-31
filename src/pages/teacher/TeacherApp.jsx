@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "firebase/auth";
-import { getAuthInstance, getDb } from "../../firebase.js";
-import { goOnline } from "firebase/database";
+import { getAuth, getDb } from "../../supabase.js";
 import { isTeacher, listen } from "../../lib/db.js";
+import { describeAuthError } from "../../lib/authErrors.js";
 import GradesTab from "./GradesTab.jsx";
 import PinsTab from "./PinsTab.jsx";
 import ImportTab from "./ImportTab.jsx";
@@ -12,38 +11,36 @@ function SignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [confirm, setConfirm] = useState("");
   const [register, setRegister] = useState(false);
   const [busy, setBusy] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    setNotice("");
     if (register && password !== confirm) {
       setError("Passwords don't match.");
       return;
     }
     setBusy(true);
     try {
-      if (register) await createUserWithEmailAndPassword(getAuthInstance(), email.trim(), password);
-      else await signInWithEmailAndPassword(getAuthInstance(), email.trim(), password);
+      const creds = { email: email.trim(), password };
+      const { data, error: err } = register ? await getAuth().signUp(creds) : await getAuth().signInWithPassword(creds);
+      if (err) throw err;
+      if (register) {
+        // With email confirmation on, Supabase answers an existing address with a user that has no identities
+        if (data.user && data.user.identities && data.user.identities.length === 0) throw Object.assign(new Error("exists"), { code: "user_already_exists" });
+        if (!data.session) {
+          setNotice("Account created. Check your email for the confirmation link, then sign in.");
+          setRegister(false);
+          setPassword("");
+          setConfirm("");
+        }
+      }
     } catch (err) {
       console.error("Sign in failed:", err);
-      const code = err?.code || "";
-      const reasons = {
-        "auth/invalid-credential": "Wrong email or password, or this user doesn't exist in Firebase Authentication.",
-        "auth/email-already-in-use": "An account with this email already exists. Sign in instead.",
-        "auth/weak-password": "Password is too weak. Use at least 6 characters.",
-        "auth/invalid-email": "That email address isn't valid.",
-        "auth/user-disabled": "This account is disabled in Firebase Authentication.",
-        "auth/too-many-requests": "Too many attempts. Wait a few minutes and try again.",
-        "auth/network-request-failed": "Network error. Check your connection.",
-        "auth/operation-not-allowed": "Email/Password sign-in isn't enabled. Enable it in Firebase console > Authentication > Sign-in method.",
-        "auth/invalid-api-key": "The Firebase API key in .env is invalid.",
-        "auth/api-key-not-valid.-please-pass-a-valid-api-key.": "The Firebase API key in .env is invalid.",
-        "auth/configuration-not-found": "Authentication isn't set up for this Firebase project. Click Get started in Firebase console > Authentication.",
-        "auth/unauthorized-domain": "This domain isn't authorized. Add it in Firebase console > Authentication > Settings > Authorized domains.",
-      };
-      setError(`${register ? "Registration" : "Sign in"} failed. ${reasons[code] || "Check your email and password."}${code ? ` (${code})` : ""}`);
+      setError(describeAuthError(err, register));
     } finally {
       setBusy(false);
     }
@@ -56,10 +53,11 @@ function SignIn() {
         <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" /></label>
         <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={register ? "new-password" : "current-password"} /></label>
         {register && <label>Confirm password<input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" /></label>}
+        {notice && <p className="banner info" role="status">{notice}</p>}
         {error && <p className="error" role="alert">{error}</p>}
         <button className="btn primary" disabled={busy}>{busy ? (register ? "Creating…" : "Signing in…") : (register ? "Create account" : "Sign in")}</button>
         <p className="small">
-          <a href="#" onClick={(e) => { e.preventDefault(); setRegister(!register); setError(""); }}>{register ? "Have an account? Sign in" : "Need an account? Register"}</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); setRegister(!register); setError(""); setNotice(""); }}>{register ? "Have an account? Sign in" : "Need an account? Register"}</a>
           {" · "}<a href="/">Student view</a>
         </p>
       </form>
@@ -72,10 +70,10 @@ function NotAdmin({ user }) {
     <main className="shell narrow">
       <div className="card">
         <h1>No access yet</h1>
-        <p>This account is signed in but is not marked as an instructor. In the Firebase console, open Realtime Database and add:</p>
-        <pre className="code">{`admins\n  ${user.uid}: true`}</pre>
+        <p>This account is signed in but is not marked as an instructor. In Supabase, open the SQL Editor and run:</p>
+        <pre className="code">{`insert into public.admins (user_id)\nvalues ('${user.id}');`}</pre>
         <p className="muted small">Then reload this page.</p>
-        <button className="btn" onClick={() => signOut(getAuthInstance())}>Sign out</button>
+        <button className="btn" onClick={() => getAuth().signOut()}>Sign out</button>
       </div>
     </main>
   );
@@ -98,7 +96,6 @@ function Dashboard({ user }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    goOnline(db);
     const onErr = () => setError("Lost access to the database. Check your connection or the rules.");
     const offs = [
       listen(db, "meta", setMeta, onErr),
@@ -130,7 +127,7 @@ function Dashboard({ user }) {
         </div>
         <div className="row">
           <a className="btn ghost" href="/">Student view</a>
-          <button className="btn ghost" onClick={() => signOut(getAuthInstance())}>Sign out</button>
+          <button className="btn ghost" onClick={() => getAuth().signOut()}>Sign out</button>
         </div>
       </header>
       <nav className="tabs" role="tablist">
@@ -160,12 +157,21 @@ export default function TeacherApp() {
   const [checkError, setCheckError] = useState("");
   const [attempt, setAttempt] = useState(0);
 
-  useEffect(() => onAuthStateChanged(getAuthInstance(), (u) => { setUser(u); setAdmin(undefined); }), []);
+  useEffect(() => {
+    const { data } = getAuth().onAuthStateChange((_event, session) => {
+      const next = session ? session.user : null;
+      // Supabase re-announces the same session (token refresh, tab focus); only a different person matters.
+      setUser((prev) => (prev && next && prev.id === next.id ? prev : next));
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  const uid = user ? user.id : null;
   useEffect(() => {
     if (!user) return;
     let alive = true;
+    setAdmin(undefined);
     setCheckError("");
-    goOnline(getDb());
     isTeacher(getDb(), user)
       .then((v) => alive && setAdmin(v))
       .catch((err) => {
@@ -173,7 +179,8 @@ export default function TeacherApp() {
         if (alive) setCheckError(err && err.code === "timeout" ? "The database did not answer in time." : "Could not reach the database (" + ((err && (err.code || err.message)) || "unknown error") + ").");
       });
     return () => { alive = false; };
-  }, [user, attempt]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, attempt]);
 
   if (user === undefined) return <main className="shell narrow"><p className="muted">Loading…</p></main>;
   if (!user) return <SignIn />;
@@ -183,10 +190,10 @@ export default function TeacherApp() {
         <div className="card">
           <h1>Can't check access</h1>
           <p className="error" role="alert">{checkError}</p>
-          <p className="muted small">Check your internet connection. Some school or office networks block the database connection.</p>
+          <p className="muted small">Check your internet connection, then try again.</p>
           <div className="row">
             <button className="btn primary" onClick={() => setAttempt((n) => n + 1)}>Try again</button>
-            <button className="btn" onClick={() => signOut(getAuthInstance())}>Sign out</button>
+            <button className="btn" onClick={() => getAuth().signOut()}>Sign out</button>
           </div>
         </div>
       </main>
