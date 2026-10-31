@@ -204,7 +204,7 @@ export default function StudentPortal() {
       <form className="card login" onSubmit={submit}>
         <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
         <h1>Student Grade Portal</h1>
-        <p className="muted">Enter your student number and the PIN your instructor gave you.</p>
+        <p className="muted intro">Enter your student number and the PIN your instructor gave you.</p>
         <label>
           Student number
           <input value={id} onChange={(e) => setId(e.target.value)} autoComplete="username" autoCapitalize="characters" inputMode="text" placeholder="e.g. 2026-00001" />
