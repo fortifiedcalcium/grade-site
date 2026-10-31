@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { addStudent, removeStudent, removeStudents, resetPin } from "../../lib/db.js";
 import { useSelection } from "../../lib/useSelection.js";
 import { csvCell, downloadText } from "../../lib/util.js";
+import { buildMailMergeRows, mailMergeCsv } from "../../lib/mailmerge.js";
 
 export default function PinsTab({ db, meta, sections, roster }) {
   const secIds = Object.keys(sections);
@@ -51,6 +52,12 @@ export default function PinsTab({ db, meta, sections, roster }) {
     downloadText("pins-" + (sections[activeId] ? sections[activeId].name : "section") + ".csv", lines.join("\n"));
   };
 
+  const exportMailMerge = () => {
+    const list = buildMailMergeRows(roster, sections, window.location.origin);
+    downloadText("pin-mail-merge.csv", mailMergeCsv(list));
+    setMsg("Downloaded pin-mail-merge.csv with " + list.length + " students from all sections. Add their emails, then follow mailmerge/README.md to send the PINs from Gmail.");
+  };
+
   if (!secIds.length) return <div className="card"><p>No sections yet. Import your class record or add a section under Settings first.</p></div>;
 
   return (
@@ -65,6 +72,7 @@ export default function PinsTab({ db, meta, sections, roster }) {
         <label className="inline"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show PINs</label>
         <button className="btn" onClick={exportCsv}>Download PIN list</button>
         <button className="btn" onClick={() => window.print()}>Print</button>
+        <button className="btn" onClick={exportMailMerge} title="All sections, ready for the Gmail mail merge">Mail merge file</button>
         {sel.selected.length > 0 && (
           <>
             <button className="btn danger" disabled={busy} onClick={removeSelected}>Delete selected ({sel.selected.length})</button>

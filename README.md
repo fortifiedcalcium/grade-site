@@ -49,6 +49,11 @@ The keys are read when the site is built, so run `npm run deploy` from a machine
 Before importing, you can check a workbook from the terminal:
 `npm run check-workbook -- "Class Record.xlsx"`
 
+## Sending PINs by email
+
+**Students & PINs > Mail merge file** downloads a file for a Google Sheet that emails each student their own PIN
+from your Gmail. Student emails are kept in your Sheet, not in the site. Setup steps: `mailmerge/README.md`.
+
 ## How it protects grades
 
 Students have no accounts. Each record is stored under a secret key derived (PBKDF2) from student number + PIN + a private salt. Row level security gives students no access to the `records` table at all; the only door is the `get_record(key)` function, which returns **one** record for a key and never lists. Only accounts in `public.admins` can write, and the app cannot add to that table.
