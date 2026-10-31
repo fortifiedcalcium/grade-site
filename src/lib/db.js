@@ -10,6 +10,7 @@
 
 import { ref, get, set, update, remove, onValue, goOnline, goOffline, serverTimestamp } from "firebase/database";
 import { recordKey, makePin, makeSalt, safeId, normId } from "./keys.js";
+import { DEFAULT_SCALE, DEFAULT_SCALE_NOTE } from "./grading.js";
 
 const clean = (obj) => JSON.parse(JSON.stringify(obj)); // drops undefined, which Firebase rejects
 
@@ -71,9 +72,22 @@ export function listen(db, path, onValueCb, onError) {
   return onValue(ref(db, path), (s) => onValueCb(s.val()), onError);
 }
 
-export async function isTeacher(db, uid) {
-  const snap = await get(ref(db, "admins/" + uid));
-  return snap.val() === true;
+/* Asks the live connection first. If that does not answer in a few seconds (blocked websockets, strict
+   networks) it falls back to a plain HTTPS request with the user's ID token, which gives the same answer
+   under the same rules. Throws if neither works so the page can show a retry instead of hanging. */
+export async function isTeacher(db, user) {
+  try {
+    const snap = await withTimeout(get(ref(db, "admins/" + user.uid)), 8000);
+    return snap.val() === true;
+  } catch (e) {
+    if (e && /permission[_ ]denied/i.test(String(e.code) + " " + e.message)) return false;
+    const token = await user.getIdToken();
+    const base = db.app.options.databaseURL.replace(/\/+$/, "");
+    const res = await withTimeout(fetch(base + "/admins/" + encodeURIComponent(user.uid) + ".json?auth=" + encodeURIComponent(token)), 10000);
+    if (res.status === 401 || res.status === 403) return false;
+    if (!res.ok) throw Object.assign(new Error("HTTP " + res.status), { code: "http" + res.status });
+    return (await res.json()) === true;
+  }
 }
 
 export function saveScore(db, key, itemKey, value) {
@@ -98,6 +112,56 @@ export function saveSection(db, id, section) {
   const { count, ...rest } = section; // eslint-disable-line no-unused-vars
   return set(ref(db, "sections/" + id), clean(rest));
 }
+
+const slugId = (text) => String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+
+/* A new section starts with the usual lecture weights and one item per category; edit them in Settings. */
+export function blankScheme() {
+  const cat = (id, title, weight, label, max) => ({ id, title, weight, items: [{ k: id + "1", label, max }] });
+  return {
+    categories: [
+      cat("exams", "Term Examinations", 30, "Exam", 100),
+      cat("attendance", "Attendance / Participation", 10, "Attendance", 100),
+      cat("activities", "Activities", 20, "Activity 1", 100),
+      cat("project", "Project", 20, "Project", 100),
+      cat("quizzes", "Quizzes", 20, "Quiz 1", 100),
+    ],
+    scale: DEFAULT_SCALE,
+    scaleNote: DEFAULT_SCALE_NOTE,
+    passEquiv: 3,
+    finalCategory: null,
+    holdFinal: false,
+  };
+}
+
+export async function addSection(db, sections, name) {
+  const title = String(name || "").trim();
+  if (!title) throw new Error("Enter a section name.");
+  if (Object.values(sections || {}).some((x) => (x.name || "").toLowerCase() === title.toLowerCase())) throw new Error("A section with that name already exists.");
+  const base = slugId(title) || "section";
+  let id = base, n = 2;
+  while ((sections || {})[id]) id = base + "-" + n++;
+  await set(ref(db, "sections/" + id), clean({ name: title, headings: [], subject: { code: "", desc: "" }, instructor: "", roomTime: "", scheme: blankScheme() }));
+  return id;
+}
+
+/* Removes the section and every student in it, with their scores. */
+export async function deleteSection(db, id, roster) {
+  const updates = { ["sections/" + id]: null };
+  let count = 0;
+  Object.entries(roster || {}).forEach(([sid, r]) => {
+    if (r.sec !== id) return;
+    updates["roster/" + sid] = null;
+    if (r.key) updates["records/" + r.key] = null;
+    count++;
+  });
+  await update(ref(db), updates);
+  return count;
+}
+
+/* Item keys are never reused, so a deleted item's old scores cannot reappear under a new item. */
+export const newItemKey = (catId) => catId + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+export const newCategoryId = (title) => (slugId(title) || "cat") + "_" + Date.now().toString(36);
 
 export async function addStudent(db, meta, { id, name, sec }) {
   const sid = safeId(id);

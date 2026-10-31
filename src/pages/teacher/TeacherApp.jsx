@@ -110,6 +110,12 @@ function Dashboard({ user }) {
   }, [db]);
 
   const loading = [meta, sections, roster, records].some((x) => x === undefined);
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!loading) return;
+    const t = setTimeout(() => setSlow(true), 12000);
+    return () => clearTimeout(t);
+  }, [loading]);
   const ctx = { db, meta: meta || {}, sections: sections || {}, roster: roster || {}, records: records || {} };
 
   return (
@@ -134,7 +140,7 @@ function Dashboard({ user }) {
       </nav>
       {error && <div className="banner">{error}</div>}
       {loading ? (
-        <p className="muted">Loading data…</p>
+        <p className="muted">Loading data…{slow && " This is taking longer than usual. Check your connection, then reload the page."}</p>
       ) : tab === "grades" ? (
         <GradesTab {...ctx} goImport={() => setTab("import")} />
       ) : tab === "pins" ? (
@@ -151,18 +157,41 @@ function Dashboard({ user }) {
 export default function TeacherApp() {
   const [user, setUser] = useState(undefined);
   const [admin, setAdmin] = useState(undefined);
+  const [checkError, setCheckError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => onAuthStateChanged(getAuthInstance(), (u) => { setUser(u); setAdmin(undefined); }), []);
   useEffect(() => {
     if (!user) return;
     let alive = true;
+    setCheckError("");
     goOnline(getDb());
-    isTeacher(getDb(), user.uid).then((v) => alive && setAdmin(v)).catch(() => alive && setAdmin(false));
+    isTeacher(getDb(), user)
+      .then((v) => alive && setAdmin(v))
+      .catch((err) => {
+        console.error("Access check failed:", err);
+        if (alive) setCheckError(err && err.code === "timeout" ? "The database did not answer in time." : "Could not reach the database (" + ((err && (err.code || err.message)) || "unknown error") + ").");
+      });
     return () => { alive = false; };
-  }, [user]);
+  }, [user, attempt]);
 
   if (user === undefined) return <main className="shell narrow"><p className="muted">Loading…</p></main>;
   if (!user) return <SignIn />;
+  if (checkError) {
+    return (
+      <main className="shell narrow">
+        <div className="card">
+          <h1>Can't check access</h1>
+          <p className="error" role="alert">{checkError}</p>
+          <p className="muted small">Check your internet connection. Some school or office networks block the database connection.</p>
+          <div className="row">
+            <button className="btn primary" onClick={() => setAttempt((n) => n + 1)}>Try again</button>
+            <button className="btn" onClick={() => signOut(getAuthInstance())}>Sign out</button>
+          </div>
+        </div>
+      </main>
+    );
+  }
   if (admin === undefined) return <main className="shell narrow"><p className="muted">Checking access…</p></main>;
   if (!admin) return <NotAdmin user={user} />;
   return <Dashboard user={user} />;

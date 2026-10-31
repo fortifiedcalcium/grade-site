@@ -42,7 +42,7 @@ export default function PinsTab({ db, meta, sections, roster }) {
     downloadText("pins-" + (sections[activeId] ? sections[activeId].name : "section") + ".csv", lines.join("\n"));
   };
 
-  if (!secIds.length) return <div className="card"><p>No sections yet. Import your class record first.</p></div>;
+  if (!secIds.length) return <div className="card"><p>No sections yet. Import your class record or add a section under Settings first.</p></div>;
 
   return (
     <>

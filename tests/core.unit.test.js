@@ -69,3 +69,20 @@ describe.skipIf(!REAL || !fs.existsSync(REAL || ""))("real workbook", () => {
     expect(res.mismatches.length).toBeLessThanOrEqual(2);
   });
 });
+
+describe("sections and items", () => {
+  it("a new section's weights add up to 100 and it computes a grade", async () => {
+    const { blankScheme } = await import("../src/lib/db.js");
+    const sc = blankScheme();
+    expect(sc.categories.reduce((a, c) => a + c.weight, 0)).toBe(100);
+    const all = {};
+    sc.categories.forEach((c) => c.items.forEach((i) => { all[i.k] = i.max; }));
+    expect(computeGrade(sc, all).total).toBe(100);
+  });
+  it("item keys are unique, even when made in the same millisecond", async () => {
+    const { newItemKey } = await import("../src/lib/db.js");
+    const keys = new Set(Array.from({ length: 500 }, () => newItemKey("quizzes")));
+    expect(keys.size).toBe(500);
+    keys.forEach((k) => expect(k).toMatch(/^[A-Za-z0-9_]+$/));
+  });
+});
