@@ -2,7 +2,9 @@ import React, { useMemo, useState } from "react";
 import { computeGrade, isNum } from "../../lib/grading.js";
 import { addStudent, clearSectionScores, removeStudent, removeStudents, saveScore } from "../../lib/db.js";
 import { useSelection } from "../../lib/useSelection.js";
-import { parseScoreInput, fmt2, fmtNum, csvCell, downloadText } from "../../lib/util.js";
+import { buildReport, FORMATS } from "../../lib/report.js";
+import { downloadBlob, loadAssets, makeReportFile } from "../../lib/exporters.js";
+import { parseScoreInput, fmt2, fmtNum } from "../../lib/util.js";
 
 function ScoreCell({ value, max, onCommit }) {
   const shown = value == null ? "" : String(value);
@@ -45,6 +47,8 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
   const [form, setForm] = useState({ id: "", name: "" });
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [format, setFormat] = useState("xlsx");
+  const [exporting, setExporting] = useState(false);
   const sec = sections[secId] || sections[secIds[0]];
   const activeId = sections[secId] ? secId : secIds[0];
 
@@ -98,14 +102,21 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
   const cats = sec.scheme.categories;
   const items = cats.flatMap((c) => (c.items || []).map((i) => ({ ...i, cat: c.id })));
 
-  const exportCsv = () => {
-    const head = ["Student no.", "Name", ...items.map((i) => cats.find((c) => c.id === i.cat).title + " " + i.label), "Final grade", "Equivalent", "Remarks"];
-    const lines = [head.map(csvCell).join(",")];
-    rows.forEach((r) => {
-      const g = computeGrade(sec.scheme, r.s);
-      lines.push([r.id, r.name, ...items.map((i) => (r.s[i.k] == null ? "" : r.s[i.k])), g.total, g.equiv.toFixed(2), g.remarks].map(csvCell).join(","));
-    });
-    downloadText((sec.name || "grades") + "-grades.csv", lines.join("\n"));
+  const exportReport = async () => {
+    setExporting(true);
+    setMsg("");
+    try {
+      const report = buildReport({ sec, meta, students: rows.map((r) => ({ id: r.id, name: r.name, s: r.s })) });
+      const assets = format === "csv" ? null : await loadAssets();
+      const { blob, filename } = await makeReportFile(format, report, assets);
+      downloadBlob(blob, filename);
+      setMsg("Exported " + filename + " (" + rows.length + " student" + (rows.length === 1 ? "" : "s") + ").");
+    } catch (e) {
+      console.error("Export failed:", e);
+      setMsg("Could not export: " + (e.message || "unknown error"));
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -118,7 +129,12 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
         </label>
         <input className="search" placeholder="Search name or number" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="muted small">{rows.length} students · changes save automatically and appear on students' screens when they refresh</span>
-        <button className="btn" onClick={exportCsv}>Export CSV</button>
+        <label className="inline">Export as
+          <select value={format} onChange={(e) => setFormat(e.target.value)} aria-label="Export format">
+            {FORMATS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
+        <button className="btn" disabled={exporting || !rows.length} onClick={exportReport}>{exporting ? "Exporting…" : "Export"}</button>
         <button className="btn danger" disabled={busy} onClick={clearScores}>Clear all scores</button>
         {sel.selected.length > 0 && (
           <>

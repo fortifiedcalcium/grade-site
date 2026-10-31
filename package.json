@@ -18,6 +18,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
+    "docx": "^9.15.0",
+    "exceljs": "^4.4.0",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "xlsx": "0.18.5"
