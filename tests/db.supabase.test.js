@@ -87,3 +87,33 @@ describe("sign-in errors", () => {
     expect(describeAuthError({ code: "invalid_credentials" }, true)).toMatch(/^Registration failed/);
   });
 });
+
+describe("bulk operations", () => {
+  const rpcLog = () => {
+    const calls = [];
+    return { calls, db: { rpc: (name, args) => { calls.push([name, args]); return Promise.resolve({ data: null, error: null }); } } };
+  };
+  it("clearSectionScores blanks scores for one section only and keeps PINs", async () => {
+    const { clearSectionScores } = await import("../src/lib/db.js");
+    const { calls, db } = rpcLog();
+    const roster = {
+      S1: { name: "Ana", sec: "a", pin: "111111", key: "k1" },
+      S2: { name: "Ben", sec: "b", pin: "222222", key: "k2" },
+      S3: { name: "Cy", sec: "a", pin: "333333", key: "k3" },
+    };
+    expect(await clearSectionScores(db, "a", roster)).toBe(2);
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toBe("upsert_students");
+    expect(calls[0][1].p_rows).toEqual([
+      { id: "S1", name: "Ana", sec: "a", pin: "111111", key: "k1", s: {} },
+      { id: "S3", name: "Cy", sec: "a", pin: "333333", key: "k3", s: {} },
+    ]);
+  });
+  it("removeStudents sends big lists in chunks", async () => {
+    const { removeStudents } = await import("../src/lib/db.js");
+    const { calls, db } = rpcLog();
+    const list = Array.from({ length: 450 }, (_, i) => ({ id: "S" + i, key: "k" + i }));
+    expect(await removeStudents(db, list)).toBe(450);
+    expect(calls.map((c) => c[1].p_rows.length)).toEqual([200, 200, 50]);
+  });
+});

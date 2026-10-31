@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { addStudent, removeStudent, resetPin } from "../../lib/db.js";
+import { addStudent, removeStudent, removeStudents, resetPin } from "../../lib/db.js";
+import { useSelection } from "../../lib/useSelection.js";
 import { csvCell, downloadText } from "../../lib/util.js";
 
 export default function PinsTab({ db, meta, sections, roster }) {
@@ -20,6 +21,14 @@ export default function PinsTab({ db, meta, sections, roster }) {
         .sort((a, b) => a[1].name.localeCompare(b[1].name)),
     [roster, activeId, q]
   );
+
+  const sel = useSelection(rows.map(([id]) => id));
+  const removeSelected = () => {
+    const list = rows.filter(([id]) => sel.has(id)).map(([id, r]) => ({ id, key: r.key }));
+    if (!list.length) return;
+    if (!window.confirm("Delete " + list.length + " selected student" + (list.length === 1 ? "" : "s") + " and all of their scores? This cannot be undone.")) return;
+    guard(async () => { await removeStudents(db, list); sel.clear(); setMsg("Deleted " + list.length + " student" + (list.length === 1 ? "" : "s") + "."); });
+  };
 
   const guard = async (fn) => {
     setBusy(true);
@@ -56,15 +65,22 @@ export default function PinsTab({ db, meta, sections, roster }) {
         <label className="inline"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show PINs</label>
         <button className="btn" onClick={exportCsv}>Download PIN list</button>
         <button className="btn" onClick={() => window.print()}>Print</button>
+        {sel.selected.length > 0 && (
+          <>
+            <button className="btn danger" disabled={busy} onClick={removeSelected}>Delete selected ({sel.selected.length})</button>
+            <button className="btn ghost" onClick={sel.clear}>Clear selection</button>
+          </>
+        )}
       </div>
       {msg && <div className="banner info">{msg}</div>}
       <div className="card flush">
         <div className="scroll tall">
           <table className="grid">
-            <thead><tr><th>Student no.</th><th>Name</th><th>PIN</th><th className="noprint"></th></tr></thead>
+            <thead><tr><th className="noprint"><input type="checkbox" aria-label="Select all students" checked={sel.allOn} onChange={(e) => sel.setAll(e.target.checked)} /></th><th>Student no.</th><th>Name</th><th>PIN</th><th className="noprint"></th></tr></thead>
             <tbody>
               {rows.map(([id, r]) => (
                 <tr key={id}>
+                  <td className="noprint"><input type="checkbox" aria-label={"Select " + r.name} checked={sel.has(id)} onChange={() => sel.toggle(id)} /></td>
                   <td>{id}</td>
                   <td>{r.name}</td>
                   <td className="mono">{show ? r.pin : "••••••"}</td>
@@ -74,7 +90,7 @@ export default function PinsTab({ db, meta, sections, roster }) {
                   </td>
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan={4} className="muted">No students.</td></tr>}
+              {!rows.length && <tr><td colSpan={5} className="muted">No students.</td></tr>}
             </tbody>
           </table>
         </div>

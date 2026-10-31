@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { addSection, deleteSection, newCategoryId, newItemKey, saveMeta, saveSection } from "../../lib/db.js";
+import { addSection, clearSectionScores, deleteSection, newCategoryId, newItemKey, saveMeta, saveSection } from "../../lib/db.js";
 
 function SectionEditor({ db, id, section, roster }) {
   const [s, setS] = useState(() => JSON.parse(JSON.stringify(section)));
@@ -31,6 +31,11 @@ function SectionEditor({ db, id, section, roster }) {
     const ok = window.confirm('Delete the section "' + s.name + '"' + (students ? " and its " + students + " student" + (students === 1 ? "" : "s") + ", with all scores" : "") + "? This cannot be undone.");
     if (!ok) return;
     try { await deleteSection(db, id); setDeleted(true); } catch (e) { setMsg("Not deleted: " + e.message); }
+  };
+  const clearScores = async () => {
+    if (!students) return setMsg("This section has no students.");
+    if (!window.confirm('Clear ALL scores for the ' + students + ' student' + (students === 1 ? "" : "s") + ' in "' + s.name + '"? Students and PINs stay. This cannot be undone.')) return;
+    try { await clearSectionScores(db, id, roster); setMsg("Cleared the scores of " + students + " student" + (students === 1 ? "" : "s") + "."); } catch (e) { setMsg("Not cleared: " + e.message); }
   };
   if (deleted) return null;
   const total = s.scheme.categories.reduce((a, c) => a + (Number(c.weight) || 0), 0);
@@ -76,6 +81,7 @@ function SectionEditor({ db, id, section, roster }) {
       <p className="muted small">Changing a maximum score or weight changes every student's computed grade immediately.</p>
       <div className="row">
         <button className="btn primary" onClick={save}>Save {s.name}</button>
+        <button type="button" className="btn danger" onClick={clearScores}>Clear all scores</button>
         <button type="button" className="btn danger" onClick={removeSection}>Delete section</button>
         {msg && <span className="small">{msg}</span>}
       </div>

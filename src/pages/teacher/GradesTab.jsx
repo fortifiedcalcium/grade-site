@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { computeGrade, isNum } from "../../lib/grading.js";
-import { addStudent, removeStudent, saveScore } from "../../lib/db.js";
+import { addStudent, clearSectionScores, removeStudent, removeStudents, saveScore } from "../../lib/db.js";
+import { useSelection } from "../../lib/useSelection.js";
 import { parseScoreInput, fmt2, fmtNum, csvCell, downloadText } from "../../lib/util.js";
 
 function ScoreCell({ value, max, onCommit }) {
@@ -56,6 +57,8 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [roster, records, activeId, q, sec]);
 
+  const sel = useSelection(rows.map((r) => r.id));
+
   if (!secIds.length) {
     return (
       <div className="card">
@@ -77,6 +80,18 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
       setForm({ id: "", name: "" });
       setMsg("Added " + r.id + ". PIN: " + r.pin + " (also under Students & PINs)");
     });
+  };
+  const removeSelected = () => {
+    const list = rows.filter((r) => sel.has(r.id)).map((r) => ({ id: r.id, key: r.key }));
+    if (!list.length) return;
+    if (!window.confirm("Delete " + list.length + " selected student" + (list.length === 1 ? "" : "s") + " and all of their scores? This cannot be undone.")) return;
+    guard(async () => { await removeStudents(db, list); sel.clear(); setMsg("Deleted " + list.length + " student" + (list.length === 1 ? "" : "s") + "."); });
+  };
+  const clearScores = () => {
+    const n = Object.values(roster).filter((r) => r.sec === activeId).length;
+    if (!n) return setMsg("This section has no students.");
+    if (!window.confirm('Clear ALL scores for the ' + n + ' student' + (n === 1 ? "" : "s") + ' in "' + sec.name + '"? Students and PINs stay. This cannot be undone.')) return;
+    guard(async () => { await clearSectionScores(db, activeId, roster); setMsg("Cleared the scores of " + n + " student" + (n === 1 ? "" : "s") + "."); });
   };
   const remove = (r) => window.confirm("Delete " + r.name + " and all of their scores?") && guard(() => removeStudent(db, r.id, r.key));
 
@@ -104,13 +119,22 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
         <input className="search" placeholder="Search name or number" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="muted small">{rows.length} students · changes save automatically and appear on students' screens when they refresh</span>
         <button className="btn" onClick={exportCsv}>Export CSV</button>
+        <button className="btn danger" disabled={busy} onClick={clearScores}>Clear all scores</button>
+        {sel.selected.length > 0 && (
+          <>
+            <button className="btn danger" disabled={busy} onClick={removeSelected}>Delete selected ({sel.selected.length})</button>
+            <button className="btn ghost" onClick={sel.clear}>Clear selection</button>
+          </>
+        )}
       </div>
       <div className="card flush">
         <div className="scroll tall">
           <table className="grid sheet">
             <thead>
               <tr>
-                <th rowSpan={2} className="stick l1">No.</th>
+                <th rowSpan={2} className="stick l1">
+                  <label className="inline"><input type="checkbox" aria-label="Select all students" checked={sel.allOn} onChange={(e) => sel.setAll(e.target.checked)} /> No.</label>
+                </th>
                 <th rowSpan={2} className="stick l2">Name</th>
                 {cats.map((c) => <th key={c.id} colSpan={(c.items || []).length} className="grp">{c.title} ({fmtNum(c.weight)}%)</th>)}
                 <th rowSpan={2} className="num">Final</th>
@@ -127,7 +151,9 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
                 const g = computeGrade(sec.scheme, r.s);
                 return (
                   <tr key={r.id}>
-                    <td className="stick l1">{r.id}</td>
+                    <td className="stick l1">
+                      <label className="inline"><input type="checkbox" aria-label={"Select " + r.name} checked={sel.has(r.id)} onChange={() => sel.toggle(r.id)} /> {r.id}</label>
+                    </td>
                     <td className="stick l2">{r.name}</td>
                     {items.map((i) => (
                       <td key={i.k} className="num">

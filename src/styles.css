@@ -65,7 +65,7 @@ table.grid { width: 100%; border-collapse: collapse; }
 .sheet .sub { font-weight: 500; }
 .stick { position: sticky; background: var(--card); z-index: 1; }
 .sheet thead .stick { z-index: 3; }
-.l1 { left: 0; min-width: 100px; } .l2 { left: 100px; min-width: 190px; border-right: 1px solid var(--line); }
+.l1 { left: 0; min-width: 130px; } .l2 { left: 130px; min-width: 190px; border-right: 1px solid var(--line); }
 input.cell { width: 56px; padding: 4px 5px; text-align: right; border-radius: 5px; }
 input.cell.over { border-color: var(--bad); } input.cell.err { border-color: var(--bad); background: var(--warn); } input.cell.saving { opacity: .6; }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; flex-wrap: wrap; }

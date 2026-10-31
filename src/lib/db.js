@@ -246,6 +246,21 @@ export async function removeStudent(db, id, key) {
   unwrap(await db.rpc("delete_students", { p_rows: [{ id, key }] }));
 }
 
+/* list: [{ id, key }]. Removes the students and all of their scores. */
+export async function removeStudents(db, list) {
+  for (let i = 0; i < list.length; i += 200) unwrap(await db.rpc("delete_students", { p_rows: list.slice(i, i + 200) }));
+  return list.length;
+}
+
+/* Blanks every score in a section but keeps its students and their PINs. Returns how many students. */
+export async function clearSectionScores(db, secId, roster) {
+  const rows = Object.entries(roster || {})
+    .filter(([, r]) => r.sec === secId)
+    .map(([id, r]) => ({ id, name: r.name, sec: r.sec, pin: r.pin, key: r.key, s: {} }));
+  for (let i = 0; i < rows.length; i += 200) unwrap(await db.rpc("upsert_students", { p_rows: rows.slice(i, i + 200) }));
+  return rows.length;
+}
+
 export async function resetPin(db, meta, id, entry) {
   const salt = await ensureSalt(db, meta);
   const pin = makePin();
