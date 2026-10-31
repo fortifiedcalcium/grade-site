@@ -216,7 +216,7 @@ export default function StudentPortal() {
         {error && <p className="error" role="alert">{error}</p>}
         <button className="btn primary" disabled={busy}>{busy ? "Checking…" : "View my grades"}</button>
         <p className="muted small">Your grades are private. Do not share your PIN.</p>
-        <p className="small"><a href="/teacher">Instructor sign in</a></p>
+        <p className="small center"><a href="/teacher">Instructor sign in</a></p>
       </form>
     </main>
   );

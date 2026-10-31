@@ -56,7 +56,7 @@ function SignIn() {
         {notice && <p className="banner info" role="status">{notice}</p>}
         {error && <p className="error" role="alert">{error}</p>}
         <button className="btn primary" disabled={busy}>{busy ? (register ? "Creating…" : "Signing in…") : (register ? "Create account" : "Sign in")}</button>
-        <p className="small">
+        <p className="small center">
           <a href="#" onClick={(e) => { e.preventDefault(); setRegister(!register); setError(""); setNotice(""); }}>{register ? "Have an account? Sign in" : "Need an account? Register"}</a>
           {" · "}<a href="/">Student view</a>
         </p>

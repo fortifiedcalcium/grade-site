@@ -27,4 +27,12 @@ describe("instructor sign-in screen", () => {
     expect(await screen.findByRole("heading", { name: /instructor sign in/i })).toBeTruthy();
     expect(screen.getByRole("button", { name: /dark theme/i })).toBeTruthy();
   });
+  it("centers the title and the links under the form, like the student card", async () => {
+    window.history.pushState({}, "", "/teacher");
+    const App = (await import("../src/App.jsx")).default;
+    render(<App />);
+    const title = await screen.findByRole("heading", { name: /instructor sign in/i });
+    expect(title.parentElement.className).toContain("login");   // styled by .login > h1 { text-align: center }
+    expect(screen.getByRole("link", { name: /student view/i }).closest("p").className).toContain("center");
+  });
 });

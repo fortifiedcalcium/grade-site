@@ -46,7 +46,7 @@ input[type=checkbox] { width: auto; }
 .toolbar > .small { order: 99; flex: 1 1 100%; }
 .logo { width: 64px; height: auto; display: block; }
 .login > .logo { margin: 0 auto; }
-.login > h1, .login > .intro { text-align: center; }
+.login > h1, .login > .intro, .login > .center { text-align: center; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .logo { background: #fff; border-radius: 50%; padding: 4px; } }
 :root[data-theme="dark"] .logo { background: #fff; border-radius: 50%; padding: 4px; }
 .theme-toggle { position: absolute; top: 8px; right: 8px; z-index: 50; padding: 5px 12px; font-size: .85rem; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
