@@ -1,0 +1,36 @@
+{
+  "name": "grade-portal-react",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Students view their own grades; the teacher edits them. React + Firebase Realtime Database.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run --config vitest.config.js",
+    "check-workbook": "node scripts/check-workbook.mjs",
+    "emulators": "firebase emulators:start --only database,auth",
+    "test:rules": "firebase emulators:exec --only database \"vitest run --config vitest.rules.config.js\"",
+    "test:rules-sim": "vitest run --config vitest.config.js tests/rules-sim.test.js"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "dependencies": {
+    "firebase": "^13.1.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "6.0.0",
+    "@testing-library/react": "^16.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "firebase-tools": "^15.34.2",
+    "jsdom": "^24.1.3",
+    "targaryen": "^3.1.0",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}
