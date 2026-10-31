@@ -57,7 +57,7 @@ describe("export files", () => {
     const { blob } = await makeReportFile("xlsx", report(), assets);
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(await blob.arrayBuffer());
-    expect(wb.worksheets.map((w) => w.name)).toEqual(["Grade Report", "All scores"]);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(["Grade Report", "All scores", "Statistics"]);
     const ws = wb.getWorksheet("Grade Report");
     const fonts = new Set();
     let finalCell;

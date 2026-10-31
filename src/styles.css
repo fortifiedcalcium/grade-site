@@ -31,6 +31,11 @@ input[type=checkbox] { width: auto; }
 .btn:disabled { opacity: .55; cursor: default; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.colpick { display: flex; gap: 6px 12px; flex-wrap: wrap; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px 6px; margin: 0; }
+.colpick legend { font-size: .75rem; color: var(--muted); padding: 0 4px; }
+.card-title { padding: 12px 14px 0; margin: 0; } .card-note { padding: 0 14px; margin: 2px 0 8px; }
+.sheet tfoot tr.stat > th, .sheet tfoot tr.stat > td { background: var(--hl); font-weight: 600; }
+.sheet tfoot tr.stat:first-child > th, .sheet tfoot tr.stat:first-child > td { border-top: 2px solid var(--line); }
 .right { text-align: right; white-space: nowrap; }
 .toolbar { margin-bottom: 12px; }
 .logo { width: 64px; height: auto; display: block; }

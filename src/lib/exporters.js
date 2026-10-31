@@ -46,7 +46,7 @@ export async function makeReportFile(format, report, assets) {
 
 /* ---------------------------------------------------------------- CSV */
 function toCsv(report) {
-  const lines = [report.detailHead, ...report.detailRows].map((r) => r.map(csvCell).join(","));
+  const lines = [report.detailHead, ...report.detailText].map((r) => r.map(csvCell).join(","));
   // the byte order mark makes Excel read names with accents (Ñ) correctly
   return new Blob(["﻿" + lines.join("\r\n")], { type: MIME.csv });
 }
@@ -84,6 +84,15 @@ async function toXlsx(report, assets) {
   for (const [label, value] of report.info) {
     ws.mergeCells(r, 1, r, n);
     ws.getCell(r, 1).value = { richText: [{ text: label + ": ", font: font({ bold: true }) }, { text: String(value), font: font() }] };
+    ws.getCell(r, 1).font = font();
+    r++;
+  }
+  if (report.filterNote) {
+    ws.mergeCells(r, 1, r, n);
+    ws.getCell(r, 1).value = { richText: [{ text: "Filters: ", font: font({ bold: true }) }, { text: report.filterNote, font: font() }] };
+    ws.getCell(r, 1).font = font();
+    ws.getCell(r, 1).alignment = { wrapText: true, vertical: "top" };
+    ws.getRow(r).height = 28;
     r++;
   }
   r++;
@@ -95,10 +104,12 @@ async function toXlsx(report, assets) {
   report.rawRows.forEach((row, idx) => {
     row.forEach((v, i) => {
       const cell = ws.getCell(r, i + 1);
+      const isStat = report.rowKinds[idx] === "stat";
       cell.value = v;
-      cell.font = font();
+      cell.font = font({ bold: isStat });
       cell.border = border;
-      if (idx % 2) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + ZEBRA } };
+      if (isStat) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFEFEF" } };
+      else if (idx % 2) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + ZEBRA } };
       const col = report.columns[i];
       cell.alignment = { horizontal: col.align, vertical: "middle" };
       if (typeof v === "number") cell.numFmt = "0.00";
@@ -106,9 +117,11 @@ async function toXlsx(report, assets) {
     r++;
   });
   r++;
-  ws.mergeCells(r, 1, r, n);
-  ws.getCell(r, 1).value = report.summary;
-  ws.getCell(r, 1).font = font({ bold: true });
+  if (report.summary) {
+    ws.mergeCells(r, 1, r, n);
+    ws.getCell(r, 1).value = report.summary;
+    ws.getCell(r, 1).font = font({ bold: true });
+  }
   ws.views = [{ showGridLines: false, state: "frozen", ySplit: headerRow }];
   ws.pageSetup = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } };
 
@@ -117,19 +130,44 @@ async function toXlsx(report, assets) {
   sc.columns = report.detailHead.map((_, i) => ({ width: i === 0 ? 14 : i === 1 ? 30 : 12 }));
   report.detailHead.forEach((h, i) => Object.assign(sc.getCell(1, i + 1), { value: h }, head));
   sc.getRow(1).height = 42;
-  const body = [report.maxRow, ...report.detailRows];
-  body.forEach((row, idx) => {
+  const textCols = report.detailHead.length - 1; // the Remarks column, when the final columns are shown
+  const hasFinal = report.detailHead[report.detailHead.length - 1] === "Remarks";
+  report.detailRows.forEach((row, idx) => {
+    const kind = report.detailKinds[idx];
     row.forEach((v, i) => {
       const cell = sc.getCell(idx + 2, i + 1);
-      const isEq = i === row.length - 2;
-      cell.value = isEq && v !== "" && v != null ? Number(v) : v === "" ? null : v;
-      cell.font = font({ bold: idx === 0 });
+      cell.value = v === "" ? null : v;
+      cell.font = font({ bold: kind !== "student" });
       cell.border = border;
-      cell.alignment = { horizontal: i < 2 || i === row.length - 1 ? "left" : "right", vertical: "middle" };
-      if (typeof cell.value === "number" && (i >= row.length - 3)) cell.numFmt = "0.00";
-      if (idx === 0) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFEFEF" } };
+      cell.alignment = { horizontal: i < 2 || (hasFinal && i === textCols) ? "left" : "right", vertical: "middle" };
+      if (typeof v === "number" && (kind === "stat" || (hasFinal && i >= textCols - 2 && i < textCols))) cell.numFmt = "0.00";
+      if (kind !== "student") cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFEFEF" } };
     });
   });
+
+  if (report.statsTable) {
+    const st = wb.addWorksheet("Statistics", { views: [{ showGridLines: false }] });
+    st.columns = report.statsTable.head.map((_, i) => ({ width: [24, 9, 9, 11, 11, 11, 30, 30][i] }));
+    st.mergeCells(1, 1, 1, report.statsTable.head.length);
+    st.getCell(1, 1).value = report.statsTable.title + " – " + report.info.find(([k]) => k === "Section")[1];
+    st.getCell(1, 1).font = font({ bold: true, size: 12, color: { argb: "FF" + MAROON } });
+    st.mergeCells(2, 1, 2, report.statsTable.head.length);
+    st.getCell(2, 1).value = report.statsTable.note + (report.filterNote ? " Filters: " + report.filterNote : "");
+    st.getCell(2, 1).font = font({ size: 9 });
+    st.getCell(2, 1).alignment = { wrapText: true, vertical: "top" };
+    st.getRow(2).height = 28;
+    report.statsTable.head.forEach((h, i) => Object.assign(st.getCell(4, i + 1), { value: h }, head));
+    st.getRow(4).height = 30;
+    report.statsTable.rawRows.forEach((row, idx) => row.forEach((v, i) => {
+      const cell = st.getCell(5 + idx, i + 1);
+      cell.value = v;
+      cell.font = font();
+      cell.border = border;
+      cell.alignment = { horizontal: i === 0 || i >= 6 ? "left" : "right", vertical: "middle", wrapText: true };
+      if (i >= 3 && i <= 5 && typeof v === "number") cell.numFmt = "0.00";
+      if (idx % 2) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + ZEBRA } };
+    }));
+  }
 
   const buf = await wb.xlsx.writeBuffer();
   return new Blob([buf], { type: MIME.xlsx });
@@ -180,13 +218,13 @@ async function toDocx(report, assets) {
     cantSplit: true,
     children: report.columns.map((c, i) => cell(c.label, i, { fill: MAROON, color: "FFFFFF", bold: true, size: 13, align: c.align === "right" ? "center" : "left" })),
   });
-  const bodyRows = report.rows.map(
-    (row, idx) =>
-      new d.TableRow({
-        cantSplit: true,
-        children: row.map((v, i) => cell(v, i, { fill: idx % 2 ? ZEBRA : undefined, align: report.columns[i].align })),
-      })
-  );
+  const bodyRows = report.rows.map((row, idx) => {
+    const stat = report.rowKinds[idx] === "stat";
+    return new d.TableRow({
+      cantSplit: true,
+      children: row.map((v, i) => cell(v, i, { fill: stat ? "EFEFEF" : idx % 2 ? ZEBRA : undefined, bold: stat, align: report.columns[i].align })),
+    });
+  });
   const table = new d.Table({
     width: { size: total, type: d.WidthType.DXA },
     columnWidths: widths,
@@ -219,6 +257,34 @@ async function toDocx(report, assets) {
     rows: infoRows,
   });
 
+  // the statistics table (highest, lowest, average and who holds them)
+  const st = report.statsTable;
+  const stWidths = st ? st.widthsCm.map((w) => cm((w / st.widthsCm.reduce((a, b) => a + b, 0)) * (total / 567))) : [];
+  const stCell = (text, i, o = {}) =>
+    new d.TableCell({
+      width: { size: stWidths[i], type: d.WidthType.DXA },
+      margins,
+      borders,
+      verticalAlign: d.VerticalAlign.CENTER,
+      shading: o.fill ? { type: d.ShadingType.CLEAR, fill: o.fill, color: "auto" } : undefined,
+      children: [P(T(text, { size: o.size || 15, bold: o.bold, color: o.color }), { alignment: i >= 1 && i <= 5 ? d.AlignmentType.RIGHT : d.AlignmentType.LEFT })],
+    });
+  const statsBlock = st
+    ? [
+        P(T(st.title, { bold: true, size: 20 }), { spacing: { before: 240, after: 40 }, keepNext: true }),
+        P(T(st.note, { size: 15, color: "444444" }), { spacing: { after: 80 }, keepNext: true }),
+        new d.Table({
+          width: { size: stWidths.reduce((a, b) => a + b, 0), type: d.WidthType.DXA },
+          columnWidths: stWidths,
+          layout: d.TableLayoutType.FIXED,
+          rows: [
+            new d.TableRow({ tableHeader: true, cantSplit: true, children: st.head.map((h, i) => stCell(h, i, { fill: MAROON, color: "FFFFFF", bold: true, size: 13 })) }),
+            ...st.rows.map((row, idx) => new d.TableRow({ cantSplit: true, children: row.map((v, i) => stCell(v, i, { fill: idx % 2 ? ZEBRA : undefined })) })),
+          ],
+        }),
+      ]
+    : [];
+
   const footer = new d.Footer({
     children: [
       ...report.contact.map((t) => P(T(t, { size: 14, color: "444444" }), { alignment: d.AlignmentType.CENTER, spacing: { after: 0 } })),
@@ -244,9 +310,11 @@ async function toDocx(report, assets) {
           P(T(report.college, { bold: true, size: 24, color: MAROON }), { alignment: d.AlignmentType.CENTER, spacing: { after: 40 } }),
           P(T(report.title, { bold: true, size: 28 }), { alignment: d.AlignmentType.CENTER, spacing: { after: 160 } }),
           infoTable,
+          ...(report.filterNote ? [P([T("Filters: ", { bold: true, size: 16 }), T(report.filterNote, { size: 16 })], { spacing: { before: 60 } })] : []),
           P(T(""), { spacing: { after: 100 } }),
           table,
-          P(T(report.summary, { bold: true, size: 18 }), { spacing: { before: 160, after: 360 } }),
+          ...statsBlock,
+          ...(report.summary ? [P(T(report.summary, { bold: true, size: 18 }), { spacing: { before: 160, after: 360 } })] : [P(T(""), { spacing: { after: 200 } })]),
           ...(report.info.find(([k]) => k === "Instructor")
             ? [
                 P(T("Prepared by:", { size: 18 }), { spacing: { after: 360 }, keepNext: true }),
@@ -273,7 +341,13 @@ export async function buildPdfDoc(report, assets) {
   // Helvetica is the standard PDF font and matches Arial's letter shapes and widths
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
   const W = 210, H = 297;
-  const bg = () => doc.addImage(assets.letterhead, "PNG", 0, 0, W, H, "letterhead", "FAST");
+  const drawn = new Set(); // pages that already have the letterhead
+  const bg = () => {
+    const page = doc.internal.getCurrentPageInfo().pageNumber;
+    if (drawn.has(page)) return;
+    drawn.add(page);
+    doc.addImage(assets.letterhead, "PNG", 0, 0, W, H, "letterhead", "FAST");
+  };
   const rgb = (hex) => [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
   doc.setProperties({ title: report.title, creator: "BulSU Grade Portal" });
   doc.setFont("helvetica", "bold");
@@ -299,6 +373,16 @@ export async function buildPdfDoc(report, assets) {
     y += 5;
   }
 
+  if (report.filterNote) {
+    doc.setFont("helvetica", "bold").setFontSize(8);
+    const lw = doc.getTextWidth("Filters: ");
+    doc.text("Filters:", 15, y);
+    doc.setFont("helvetica", "normal");
+    const lines = doc.splitTextToSize(report.filterNote, W - 30 - lw);
+    doc.text(lines, 15 + lw, y);
+    y += 4 * lines.length;
+  }
+
   const avail = W - 30;
   const sumCm = report.columns.reduce((a, c) => a + c.widthCm, 0);
   autoTable(doc, {
@@ -311,13 +395,41 @@ export async function buildPdfDoc(report, assets) {
     headStyles: { fillColor: rgb(MAROON), textColor: [255, 255, 255], fontStyle: "bold", fontSize: 6.5, halign: "center", cellPadding: 1 },
     alternateRowStyles: { fillColor: rgb(ZEBRA) },
     columnStyles: Object.fromEntries(report.columns.map((c, i) => [i, { cellWidth: (c.widthCm / sumCm) * avail, halign: c.align }])),
-    willDrawPage: (data) => { if (data.pageNumber > 1) bg(); },
+    willDrawPage: () => bg(),
+    didParseCell: (data) => {
+      if (data.section === "body" && report.rowKinds[data.row.index] === "stat") {
+        data.cell.styles.fontStyle = "bold";
+        data.cell.styles.fillColor = [239, 239, 239];
+      }
+    },
   });
 
   let endY = doc.lastAutoTable.finalY + 7;
+  const st = report.statsTable;
+  if (st) {
+    // heading + note, the header row and the rows; start a new page only if they would not fit
+    const needed = 7 + 7 + 8 * st.rows.length;
+    if (endY + needed > H - 58) { doc.addPage(); bg(); endY = 58; }
+    doc.setFont("helvetica", "bold").setFontSize(10).setTextColor(0, 0, 0).text(st.title, 15, endY);
+    doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(68, 68, 68).text(st.note, 15, endY + 4.5);
+    const stSum = st.widthsCm.reduce((a, b) => a + b, 0);
+    autoTable(doc, {
+      startY: endY + 7,
+      margin: { top: 54, bottom: 58, left: 15, right: 15 },
+      head: [st.head],
+      body: st.rows,
+      theme: "grid",
+      styles: { font: "helvetica", fontSize: 7.5, cellPadding: 1.3, lineColor: [187, 187, 187], lineWidth: 0.1, textColor: [0, 0, 0], valign: "middle" },
+      headStyles: { fillColor: rgb(MAROON), textColor: [255, 255, 255], fontStyle: "bold", fontSize: 6.5, halign: "center", cellPadding: 1 },
+      alternateRowStyles: { fillColor: rgb(ZEBRA) },
+      columnStyles: Object.fromEntries(st.widthsCm.map((w, i) => [i, { cellWidth: (w / stSum) * avail, halign: i >= 1 && i <= 5 ? "right" : "left" }])),
+      willDrawPage: () => bg(),
+    });
+    endY = doc.lastAutoTable.finalY + 7;
+  }
   if (endY > H - 58 - 30) { doc.addPage(); bg(); endY = 58; }
   doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(0, 0, 0);
-  doc.text(report.summary, 15, endY);
+  if (report.summary) doc.text(report.summary, 15, endY);
   const instructor = report.info.find(([k]) => k === "Instructor");
   if (instructor) {
     doc.setFont("helvetica", "normal").text("Prepared by:", 15, endY + 12);

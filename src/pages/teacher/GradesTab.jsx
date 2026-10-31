@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { computeGrade, isNum } from "../../lib/grading.js";
 import { addStudent, clearSectionScores, removeStudent, removeStudents, saveScore } from "../../lib/db.js";
 import { useSelection } from "../../lib/useSelection.js";
+import { buildStats, filterAndSort, namesText, SORT_OPTIONS, STATUS_OPTIONS } from "../../lib/stats.js";
 import { buildReport, FORMATS } from "../../lib/report.js";
 import { downloadBlob, loadAssets, makeReportFile } from "../../lib/exporters.js";
 import { parseScoreInput, fmt2, fmtNum } from "../../lib/util.js";
@@ -49,17 +50,25 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
   const [busy, setBusy] = useState(false);
   const [format, setFormat] = useState("xlsx");
   const [exporting, setExporting] = useState(false);
+  const [status, setStatus] = useState("all");
+  const [sort, setSort] = useState("name");
+  const [show, setShow] = useState("both");
+  const [hiddenCats, setHiddenCats] = useState([]);
+  const [showFinal, setShowFinal] = useState(true);
   const sec = sections[secId] || sections[secIds[0]];
   const activeId = sections[secId] ? secId : secIds[0];
 
-  const rows = useMemo(() => {
+  const graded = useMemo(() => {
     if (!sec) return [];
     return Object.entries(roster)
       .filter(([, r]) => r.sec === activeId)
       .filter(([id, r]) => !q || (id + " " + r.name).toLowerCase().includes(q.toLowerCase()))
-      .map(([id, r]) => ({ id, name: r.name, key: r.key, s: (records[r.key] && records[r.key].s) || {} }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .map(([id, r]) => {
+        const s = (records[r.key] && records[r.key].s) || {};
+        return { id, name: r.name, key: r.key, s, g: computeGrade(sec.scheme, s) };
+      });
   }, [roster, records, activeId, q, sec]);
+  const rows = useMemo(() => filterAndSort(graded, status, sort), [graded, status, sort]);
 
   const sel = useSelection(rows.map((r) => r.id));
 
@@ -99,14 +108,30 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
   };
   const remove = (r) => window.confirm("Delete " + r.name + " and all of their scores?") && guard(() => removeStudent(db, r.id, r.key));
 
-  const cats = sec.scheme.categories;
+  const allCats = sec.scheme.categories;
+  const cats = allCats.filter((c) => !hiddenCats.includes(c.id));
   const items = cats.flatMap((c) => (c.items || []).map((i) => ({ ...i, cat: c.id })));
+  const showStudents = show !== "stats";
+  const showStats = show !== "students";
+  const stats = buildStats(sec, rows, cats.map((c) => c.id));
+  const statCells = [["Highest", "max"], ["Lowest", "min"], ["Average", "avg"]];
+  const fmtStat = (v) => (isNum(v) ? fmt2(v) : "—");
+  const toggleCat = (id) => setHiddenCats((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  /* one line describing what is filtered, printed on the exports */
+  const filterNote = [
+    status !== "all" && "Status: " + STATUS_OPTIONS.find(([id]) => id === status)[1],
+    q && 'Search: "' + q + '"',
+    (hiddenCats.some((id) => allCats.some((c) => c.id === id)) || !showFinal) && "Columns: " + [...cats.map((c) => c.title), ...(showFinal ? ["Final grade"] : [])].join(", "),
+    sort !== "name" && "Sorted by: " + SORT_OPTIONS.find(([id]) => id === sort)[1],
+    show !== "both" && (show === "stats" ? "Statistics only" : "Students only"),
+  ].filter(Boolean).join("  ·  ");
 
   const exportReport = async () => {
     setExporting(true);
     setMsg("");
     try {
-      const report = buildReport({ sec, meta, students: rows.map((r) => ({ id: r.id, name: r.name, s: r.s })) });
+      const report = buildReport({ sec, meta, students: rows.map((r) => ({ id: r.id, name: r.name, s: r.s })), view: { hiddenCats, showFinal, show, filterNote } });
       const assets = format === "csv" ? null : await loadAssets();
       const { blob, filename } = await makeReportFile(format, report, assets);
       downloadBlob(blob, filename);
@@ -128,7 +153,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
           </select>
         </label>
         <input className="search" placeholder="Search name or number" value={q} onChange={(e) => setQ(e.target.value)} />
-        <span className="muted small">{rows.length} students · changes save automatically and appear on students' screens when they refresh</span>
+        <span className="muted small">{rows.length === graded.length ? rows.length : rows.length + " of " + graded.length} students · changes save automatically and appear on students' screens when they refresh</span>
         <label className="inline">Export as
           <select value={format} onChange={(e) => setFormat(e.target.value)} aria-label="Export format">
             {FORMATS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
@@ -143,6 +168,33 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
           </>
         )}
       </div>
+      <div className="row toolbar filters">
+        <label className="inline">Status
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            {STATUS_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
+        <label className="inline">Sort
+          <select value={sort} onChange={(e) => setSort(e.target.value)}>
+            {SORT_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+        </label>
+        <label className="inline">View
+          <select value={show} onChange={(e) => setShow(e.target.value)}>
+            <option value="both">Students and statistics</option>
+            <option value="students">Students only</option>
+            <option value="stats">Statistics only</option>
+          </select>
+        </label>
+        <fieldset className="colpick">
+          <legend>Columns</legend>
+          {allCats.map((c) => (
+            <label className="inline" key={c.id}><input type="checkbox" checked={!hiddenCats.includes(c.id)} onChange={() => toggleCat(c.id)} /> {c.title}</label>
+          ))}
+          <label className="inline"><input type="checkbox" checked={showFinal} onChange={(e) => setShowFinal(e.target.checked)} /> Final grade</label>
+          <button type="button" className="btn small" onClick={() => { setHiddenCats([]); setShowFinal(true); }}>Show all</button>
+        </fieldset>
+      </div>
       <div className="card flush">
         <div className="scroll tall">
           <table className="grid sheet">
@@ -153,9 +205,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
                 </th>
                 <th rowSpan={2} className="stick l2">Name</th>
                 {cats.map((c) => <th key={c.id} colSpan={(c.items || []).length} className="grp">{c.title} ({fmtNum(c.weight)}%)</th>)}
-                <th rowSpan={2} className="num">Final</th>
-                <th rowSpan={2} className="num">Eq.</th>
-                <th rowSpan={2}>Remarks</th>
+                {showFinal && <><th rowSpan={2} className="num">Final</th><th rowSpan={2} className="num">Eq.</th><th rowSpan={2}>Remarks</th></>}
                 <th rowSpan={2}><span className="sr-only">Delete</span></th>
               </tr>
               <tr>
@@ -163,8 +213,8 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
-                const g = computeGrade(sec.scheme, r.s);
+              {showStudents && rows.map((r) => {
+                const g = r.g;
                 return (
                   <tr key={r.id}>
                     <td className="stick l1">
@@ -176,18 +226,68 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
                         <ScoreCell value={r.s[i.k]} max={i.max} onCommit={(v) => saveScore(db, r.key, i.k, v)} />
                       </td>
                     ))}
-                    <td className="num"><strong>{g.pending ? "—" : fmt2(g.total)}</strong></td>
-                    <td className="num">{g.pending ? "—" : g.equiv.toFixed(2)}</td>
-                    <td className={g.pending ? "muted" : g.remarks === "Passed" ? "ok" : "bad"}>{g.pending ? "Pending" : g.remarks}</td>
+                    {showFinal && (
+                      <>
+                        <td className="num"><strong>{g.pending ? "—" : fmt2(g.total)}</strong></td>
+                        <td className="num">{g.pending ? "—" : g.equiv.toFixed(2)}</td>
+                        <td className={g.pending ? "muted" : g.remarks === "Passed" ? "ok" : "bad"}>{g.pending ? "Pending" : g.remarks}</td>
+                      </>
+                    )}
                     <td><button className="btn small danger" disabled={busy} aria-label={"Delete " + r.name} onClick={() => remove(r)}>Delete</button></td>
                   </tr>
                 );
               })}
-              {!rows.length && <tr><td colSpan={items.length + 6} className="muted">No students found.</td></tr>}
+              {!rows.length && <tr><td colSpan={items.length + (showFinal ? 3 : 0) + 3} className="muted">No students found.</td></tr>}
             </tbody>
+            {showStats && rows.length > 0 && (
+              <tfoot>
+                {statCells.map(([label, pick]) => (
+                  <tr key={pick} className="stat">
+                    <th className="stick l1">{label}</th>
+                    <th className="stick l2"></th>
+                    {items.map((i) => <td key={i.k} className="num">{fmtStat(stats.items[i.k][pick])}</td>)}
+                    {showFinal && (
+                      <>
+                        <td className="num">{fmtStat(stats.final[pick])}</td>
+                        <td className="num">{pick === "avg" ? fmtStat(stats.equiv.avg) : "—"}</td>
+                        <td></td>
+                      </>
+                    )}
+                    <td></td>
+                  </tr>
+                ))}
+              </tfoot>
+            )}
           </table>
         </div>
       </div>
+      {showStats && rows.length > 0 && (
+        <section className="card flush" aria-label="Statistics by component">
+          <h2 className="card-title">Statistics</h2>
+          <p className="muted small card-note">Points earned out of each component's weight, for the {rows.length} student{rows.length === 1 ? "" : "s"} shown. Blank scores are not counted.</p>
+          <div className="scroll">
+            <table className="grid">
+              <thead><tr><th>Component</th><th className="num">Weight</th><th className="num">Counted</th><th className="num">Highest</th><th className="num">Lowest</th><th className="num">Average</th><th>Highest scored by</th><th>Lowest scored by</th></tr></thead>
+              <tbody>
+                {stats.cats.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.title}</td><td className="num">{fmtNum(c.weight)}%</td><td className="num">{c.n}</td>
+                    <td className="num">{fmtStat(c.max)}</td><td className="num">{fmtStat(c.min)}</td><td className="num">{fmtStat(c.avg)}</td>
+                    <td>{namesText(c.highest)}</td><td>{namesText(c.lowest)}</td>
+                  </tr>
+                ))}
+                {showFinal && (
+                  <tr className="hl">
+                    <td>Final grade</td><td className="num">{fmtNum(allCats.reduce((a, c) => a + (isNum(c.weight) ? c.weight : 0), 0))}%</td><td className="num">{stats.final.n}</td>
+                    <td className="num">{fmtStat(stats.final.max)}</td><td className="num">{fmtStat(stats.final.min)}</td><td className="num">{fmtStat(stats.final.avg)}</td>
+                    <td>{namesText(stats.final.highest)}</td><td>{namesText(stats.final.lowest)}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
       {msg && <div className="banner info" role="status">{msg}</div>}
       <form className="card row noprint" onSubmit={add}>
         <strong>Add a student to this section</strong>
