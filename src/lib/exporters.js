@@ -2,8 +2,8 @@ import { csvCell } from "./util.js";
 import { REPORT_FONT } from "./report.js";
 
 /* Builds the grade report file in each format. The heavy libraries are imported only when someone exports,
-   so they never slow down the normal pages. `assets` = { letterhead, banner }: PNG bytes of the BulSU
-   letterhead (full page) and its top banner. */
+   so they never slow down the normal pages. `assets` = { letterhead, banner, logos, strip }: PNG bytes of the BulSU
+   letterhead (full page), its top banner, and the seal/Bagong Pilipinas and accreditation logos cropped from it. */
 
 const MAROON = "990000";
 const ZEBRA = "F8F0F0";
@@ -20,8 +20,8 @@ export async function loadAssets() {
     if (!res.ok) throw new Error("Could not load " + url);
     return new Uint8Array(await res.arrayBuffer());
   };
-  const [letterhead, banner] = await Promise.all([get("/report/letterhead.png"), get("/report/banner.png")]);
-  return { letterhead, banner };
+  const [letterhead, banner, logos, strip] = await Promise.all([get("/report/letterhead.png"), get("/report/banner.png"), get("/report/logos.png"), get("/report/strip.png")]);
+  return { letterhead, banner, logos, strip };
 }
 
 export function downloadBlob(blob, filename) {
@@ -64,38 +64,68 @@ async function toXlsx(report, assets) {
   /* ---- sheet 1: the report */
   const ws = wb.addWorksheet("Grade Report", { views: [{ showGridLines: false }] });
   const n = report.columns.length;
-  ws.columns = report.columns.map((c, i) => ({ width: i === 0 ? 14 : i === 1 ? 30 : c.label === "Remarks" ? 12 : c.label === "Final" || c.label === "Eq." ? 9 : 14 }));
-  const BANNER_ROWS = 6;
-  for (let r = 1; r <= BANNER_ROWS; r++) ws.getRow(r).height = 23;
-  const img = wb.addImage({ buffer: typeof Buffer !== "undefined" ? Buffer.from(assets.banner) : assets.banner, extension: "png" });
-  ws.addImage(img, { tl: { col: 0, row: 0 }, ext: { width: 720, height: 183 } });
+  const widths = report.columns.map((c, i) => (i === 0 ? 14 : i === 1 ? 30 : c.label === "Remarks" ? 12 : c.label === "Final" || c.label === "Eq." ? 9 : 14));
+  /* A narrow table (few categories) would not leave room for the logos beside the centred title, so the
+     columns are widened evenly until the letterhead fits. */
+  const colPx = (w) => Math.round(w * 7 + 5);
+  const MIN_PX = 960;
+  const short = MIN_PX - widths.reduce((a, w) => a + colPx(w), 0);
+  if (short > 0) widths.forEach((w, i) => { widths[i] = w + short / n / 7; });
+  ws.columns = widths.map((width) => ({ width }));
+  const totalPx = widths.reduce((a, w) => a + colPx(w), 0);
+  const px2pt = (px) => Math.round(px * 0.75 * 100) / 100;
+  const img = (buf) => wb.addImage({ buffer: typeof Buffer !== "undefined" ? Buffer.from(buf) : buf, extension: "png" });
 
-  let r = BANNER_ROWS + 1;
-  const merged = (text, opts) => {
-    ws.mergeCells(r, 1, r, n);
-    const cell = ws.getCell(r, 1);
+  /* ---- letterhead: maroon band, centred titles (one merged row each), logos inside the rows */
+  let r = 1;
+  const row = (height) => { ws.getRow(r).height = height; return r++; };
+  const band = row(14);
+  ws.mergeCells(band, 1, band, n);
+  ws.getCell(band, 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + MAROON } };
+  const titleTop = r;
+  const title = (text, height, extra) => {
+    const rr = row(height);
+    ws.mergeCells(rr, 1, rr, n);
+    const cell = ws.getCell(rr, 1);
     cell.value = text;
-    Object.assign(cell, opts);
-    r++;
+    cell.font = font(extra);
+    cell.alignment = { horizontal: "center", vertical: "middle" };
   };
-  merged(report.college, { font: font({ bold: true, size: 13, color: { argb: "FF" + MAROON } }), alignment: { horizontal: "center" } });
-  merged(report.title, { font: font({ bold: true, size: 14 }), alignment: { horizontal: "center" } });
-  r++;
-  for (const [label, value] of report.info) {
-    ws.mergeCells(r, 1, r, n);
-    ws.getCell(r, 1).value = { richText: [{ text: label + ": ", font: font({ bold: true }) }, { text: String(value), font: font() }] };
-    ws.getCell(r, 1).font = font();
-    r++;
+  const maroon = { argb: "FF" + MAROON };
+  title("Republic of the Philippines", 18, { size: 12, color: maroon });
+  title("City of Malolos, Bulacan", 18, { size: 12, color: maroon });
+  title("BULACAN STATE UNIVERSITY", 28, { size: 18, bold: true, color: maroon });
+  title(report.college, 20, { size: 12, bold: true, color: maroon });
+  title(report.title, 24, { size: 14, bold: true, color: { argb: "FF000000" } });
+  if (assets.logos) {
+    // seal + Bagong Pilipinas, left of the titles; 382x179 source, aspect kept
+    ws.addImage(img(assets.logos), { tl: { col: 0.08, row: titleTop - 1 + 0.15 }, ext: { width: 213, height: 100 }, editAs: "oneCell" });
   }
-  if (report.filterNote) {
-    ws.mergeCells(r, 1, r, n);
-    ws.getCell(r, 1).value = { richText: [{ text: "Filters: ", font: font({ bold: true }) }, { text: report.filterNote, font: font() }] };
-    ws.getCell(r, 1).font = font();
-    ws.getCell(r, 1).alignment = { wrapText: true, vertical: "top" };
-    ws.getRow(r).height = 28;
-    r++;
+  const stripRow = row(8);
+  if (assets.strip) {
+    const w = Math.min(totalPx - 24, 1100);
+    const h = Math.round((w * 75) / 1189);
+    ws.getRow(stripRow).height = px2pt(h + 8);
+    // centre it: the anchor is in columns, so work out the column and offset from pixels
+    let left = (totalPx - w) / 2;
+    let col = 0;
+    while (col < n - 1 && left >= colPx(widths[col])) { left -= colPx(widths[col]); col++; }
+    ws.addImage(img(assets.strip), { tl: { col: col + left / colPx(widths[col]), row: stripRow - 1 + 0.05 }, ext: { width: w, height: h }, editAs: "oneCell" });
   }
-  r++;
+  row(8);
+
+  /* ---- info block: one item per row, bold labels, left aligned */
+  const infoRow = (label, value, extra = {}) => {
+    const rr = row(extra.height || 16);
+    ws.mergeCells(rr, 1, rr, n);
+    const cell = ws.getCell(rr, 1);
+    cell.value = { richText: [{ text: label + ": ", font: font({ bold: true }) }, { text: String(value), font: font() }] };
+    cell.font = font();
+    cell.alignment = { horizontal: "left", vertical: extra.vertical || "middle", wrapText: !!extra.wrap };
+  };
+  for (const [label, value] of report.info) infoRow(label, value);
+  if (report.filterNote) infoRow("Filters", report.filterNote, { height: 28, wrap: true, vertical: "top" });
+  row(10);
 
   const headerRow = r;
   report.columns.forEach((c, i) => Object.assign(ws.getCell(r, i + 1), { value: c.label }, head));
@@ -117,13 +147,21 @@ async function toXlsx(report, assets) {
     r++;
   });
   r++;
+  let lastRow = r - 2;
   if (report.summary) {
     ws.mergeCells(r, 1, r, n);
     ws.getCell(r, 1).value = report.summary;
     ws.getCell(r, 1).font = font({ bold: true });
+    lastRow = r;
   }
   ws.views = [{ showGridLines: false, state: "frozen", ySplit: headerRow }];
-  ws.pageSetup = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } };
+  ws.pageSetup = {
+    paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+    printArea: "A1:" + ws.getColumn(n).letter + lastRow,
+    printTitlesRow: headerRow + ":" + headerRow,
+    horizontalCentered: true,
+    margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+  };
 
   /* ---- sheet 2: every score */
   const sc = wb.addWorksheet("All scores", { views: [{ state: "frozen", xSplit: 2, ySplit: 1 }] });

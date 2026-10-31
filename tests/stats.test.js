@@ -120,7 +120,7 @@ describe("filtered exports", () => {
   let assets;
   beforeAll(() => {
     const read = (f) => new Uint8Array(fs.readFileSync(new URL("../public/report/" + f, import.meta.url)));
-    assets = { letterhead: read("letterhead.png"), banner: read("banner.png") };
+    assets = { letterhead: read("letterhead.png"), banner: read("banner.png"), logos: read("logos.png"), strip: read("strip.png") };
   });
   const report = () => buildReport({ sec, meta: {}, students: raw, now: new Date("2026-10-31"), view: { hiddenCats: ["quiz", "final"], showFinal: false, filterNote: 'Status: Passed  ·  Columns: Activities' } });
 

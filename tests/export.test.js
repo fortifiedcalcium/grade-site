@@ -26,7 +26,7 @@ let assets;
 
 beforeAll(() => {
   const read = (f) => new Uint8Array(fs.readFileSync(new URL("../public/report/" + f, import.meta.url)));
-  assets = { letterhead: read("letterhead.png"), banner: read("banner.png") };
+  assets = { letterhead: read("letterhead.png"), banner: read("banner.png"), logos: read("logos.png"), strip: read("strip.png") };
 });
 
 describe("report data", () => {
@@ -53,6 +53,40 @@ describe("export files", () => {
     expect(text.split("\r\n")[0]).toBe("Student no.,Name,Quizzes Quiz 1,Quizzes Quiz 2,Final Exam Final,Final grade,Equivalent,Remarks");
   });
 
+  it("xlsx letterhead: full-width maroon band, centred merged titles, one info item per row, landscape print setup", async () => {
+    const rep = report();
+    const { blob } = await makeReportFile("xlsx", rep, assets);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(await blob.arrayBuffer());
+    const ws = wb.getWorksheet("Grade Report");
+    const n = rep.columns.length;
+    const lastCol = ws.getColumn(n).letter;
+    expect(ws.getCell("A1").fill.fgColor.argb).toBe("FF990000");
+    expect(ws.getCell("A1").isMerged && ws.getCell("A1").master.address).toBe("A1");
+    expect(ws.model.merges).toContain("A1:" + lastCol + "1");
+    const titles = ["Republic of the Philippines", "City of Malolos, Bulacan", "BULACAN STATE UNIVERSITY", rep.college, "GRADE REPORT"];
+    titles.forEach((t, i) => {
+      const c = ws.getCell(2 + i, 1);
+      expect(c.value).toBe(t);
+      expect(ws.model.merges).toContain("A" + (2 + i) + ":" + lastCol + (2 + i));
+      expect(c.alignment).toMatchObject({ horizontal: "center", vertical: "middle" });
+    });
+    expect(ws.getCell("A4").font).toMatchObject({ size: 18, bold: true });
+    expect(ws.getCell("A2").font.size).toBe(12);
+    // each info item in its own row, label bold
+    const infoStart = 9;
+    rep.info.forEach(([label], i) => {
+      const v = ws.getCell(infoStart + i, 1).value;
+      expect(v.richText[0]).toMatchObject({ text: label + ": " });
+      expect(v.richText[0].font.bold).toBe(true);
+    });
+    expect(ws.pageSetup).toMatchObject({ orientation: "landscape", fitToWidth: 1 });
+    expect(ws.pageSetup.printArea).toMatch(new RegExp("^A1:" + lastCol + "\\d+$"));
+    expect(ws.views[0]).toMatchObject({ state: "frozen" });
+    // the logos sit inside the header rows
+    for (const img of ws.getImages()) expect(img.range.tl.nativeRow).toBeLessThan(8);
+  });
+
   it("xlsx is Arial throughout, keeps numbers as numbers, and has a second sheet with every score", async () => {
     const { blob } = await makeReportFile("xlsx", report(), assets);
     const wb = new ExcelJS.Workbook();
@@ -64,7 +98,7 @@ describe("export files", () => {
     ws.eachRow((row) => row.eachCell((c) => { if (c.value != null && c.font) fonts.add(c.font.name); if (c.value === 87) finalCell = c; }));
     expect([...fonts]).toEqual(["Arial"]);
     expect(finalCell && typeof finalCell.value).toBe("number");
-    expect(ws.getImages().length).toBe(1);
+    expect(ws.getImages().length).toBe(2); // seal + Bagong Pilipinas, and the accreditation strip
     const all = wb.getWorksheet("All scores");
     expect(all.getRow(1).getCell(3).value).toBe("Quizzes Quiz 1");
     expect(all.getRow(2).getCell(2).value).toBe("Maximum score");
