@@ -264,23 +264,23 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
       {showStats && rows.length > 0 && (
         <section className="card flush" aria-label="Statistics by component">
           <h2 className="card-title">Statistics</h2>
-          <p className="muted small card-note">Points earned out of each component's weight, for the {rows.length} student{rows.length === 1 ? "" : "s"} shown. Blank scores are not counted.</p>
+          <p className="muted small card-note">Points earned out of each component's weight, for the {rows.length} student{rows.length === 1 ? "" : "s"} shown. Blank scores are not counted. "Average scored by" is the student whose points are closest to the average.</p>
           <div className="scroll">
             <table className="grid">
-              <thead><tr><th>Component</th><th className="num">Weight</th><th className="num">Counted</th><th className="num">Highest</th><th className="num">Lowest</th><th className="num">Average</th><th>Highest scored by</th><th>Lowest scored by</th></tr></thead>
+              <thead><tr><th>Component</th><th className="num">Weight</th><th className="num">Counted</th><th className="num">Highest</th><th className="num">Lowest</th><th className="num">Average</th><th>Highest scored by</th><th>Lowest scored by</th><th>Average scored by</th></tr></thead>
               <tbody>
                 {stats.cats.map((c) => (
                   <tr key={c.id}>
                     <td>{c.title}</td><td className="num">{fmtNum(c.weight)}%</td><td className="num">{c.n}</td>
                     <td className="num">{fmtStat(c.max)}</td><td className="num">{fmtStat(c.min)}</td><td className="num">{fmtStat(c.avg)}</td>
-                    <td>{namesText(c.highest)}</td><td>{namesText(c.lowest)}</td>
+                    <td>{namesText(c.highest)}</td><td>{namesText(c.lowest)}</td><td>{namesText(c.closest)}</td>
                   </tr>
                 ))}
                 {showFinal && (
                   <tr className="hl">
                     <td>Final grade</td><td className="num">{fmtNum(allCats.reduce((a, c) => a + (isNum(c.weight) ? c.weight : 0), 0))}%</td><td className="num">{stats.final.n}</td>
                     <td className="num">{fmtStat(stats.final.max)}</td><td className="num">{fmtStat(stats.final.min)}</td><td className="num">{fmtStat(stats.final.avg)}</td>
-                    <td>{namesText(stats.final.highest)}</td><td>{namesText(stats.final.lowest)}</td>
+                    <td>{namesText(stats.final.highest)}</td><td>{namesText(stats.final.lowest)}</td><td>{namesText(stats.final.closest)}</td>
                   </tr>
                 )}
               </tbody>

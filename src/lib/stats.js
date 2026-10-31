@@ -16,14 +16,18 @@ export function summarize(values) {
   };
 }
 
-/* entries: [{ name, value }] -> the figures plus who holds the highest and lowest (all of them, if tied) */
+/* entries: [{ name, value }] -> the figures plus who holds the highest and lowest, and who is closest to
+   the average (all of them, if tied). Nobody scores exactly the average, so "closest" stands in for it. */
 export function summarizeNamed(entries) {
   const valid = entries.filter((e) => isNum(e.value));
   const s = summarize(valid.map((e) => e.value));
+  const gap = (e) => Math.abs(e.value - s.avg);
+  const nearest = s.n ? Math.min(...valid.map(gap)) : 0;
   return {
     ...s,
     highest: s.n ? valid.filter((e) => e.value === s.max).map((e) => e.name) : [],
     lowest: s.n ? valid.filter((e) => e.value === s.min).map((e) => e.name) : [],
+    closest: s.n ? valid.filter((e) => gap(e) - nearest < 1e-9).map((e) => e.name) : [],
   };
 }
 

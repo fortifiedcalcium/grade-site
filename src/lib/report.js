@@ -122,20 +122,20 @@ export function buildReport({ sec, meta, students, now = new Date(), view = {} }
   /* ---- statistics by component (with who holds the highest and lowest) */
   let statsTable = null;
   if (showStats && graded.length) {
-    const head = ["Component", "Weight", "Counted", "Highest", "Lowest", "Average", "Highest scored by", "Lowest scored by"];
+    const head = ["Component", "Weight", "Counted", "Highest", "Lowest", "Average", "Highest scored by", "Lowest scored by", "Average scored by"];
     const line = (title, weightText, s) => ({
-      text: [title, weightText, String(s.n), show2(s.max), show2(s.min), show2(s.avg), namesText(s.highest), namesText(s.lowest)],
-      raw: [title, weightText, s.n, s.max, s.min, s.avg, namesText(s.highest), namesText(s.lowest)],
+      text: [title, weightText, String(s.n), show2(s.max), show2(s.min), show2(s.avg), namesText(s.highest), namesText(s.lowest), namesText(s.closest)],
+      raw: [title, weightText, s.n, s.max, s.min, s.avg, namesText(s.highest), namesText(s.lowest), namesText(s.closest)],
     });
     const lines = stats.cats.map((c) => line(c.title, fmtNum(c.weight) + "%", c));
     if (showFinal) lines.push(line("Final grade", fmtNum(allCats.reduce((a, c) => a + (isNum(c.weight) ? c.weight : 0), 0)) + "%", stats.final));
     statsTable = {
       title: "Summary statistics",
-      note: "Points earned out of each component's weight. Blank scores are not counted.",
+      note: "Points earned out of each component's weight. Blank scores are not counted. \"Average scored by\" is the student whose points are closest to the average.",
       head,
       rows: lines.map((l) => l.text),
       rawRows: lines.map((l) => l.raw),
-      widthsCm: [3.6, 1.3, 1.3, 1.6, 1.6, 1.6, 3.5, 3.5],
+      widthsCm: [3.0, 1.2, 1.2, 1.5, 1.5, 1.5, 3.0, 3.0, 3.0],
     };
   }
 

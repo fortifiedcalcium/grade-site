@@ -39,6 +39,14 @@ describe("grades tab statistics and filters", () => {
     expect(act.textContent).toContain("Ana");   // 18/20 * 50 = 45 is the highest
     expect(act.textContent).toContain("Ben");   // 6/20 * 50 = 15 is the lowest
   });
+  it("names who is closest to the average in each component", () => {
+    mount();
+    const card = screen.getByLabelText("Statistics by component");
+    expect(within(card).getByText("Average scored by", { selector: "th" })).toBeTruthy();
+    const act = within(card).getByText("Activities").closest("tr");
+    // Activities points: Ana 45, Ben 15, Cy 40 -> average 33.33; Cy (40) is closest
+    expect(act.cells[act.cells.length - 1].textContent).toBe("Cy");
+  });
   it("hiding a column group removes its scores and its statistics", () => {
     mount();
     expect(screen.getByText("Act 1")).toBeTruthy();

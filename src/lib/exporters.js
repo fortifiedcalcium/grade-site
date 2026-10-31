@@ -147,7 +147,7 @@ async function toXlsx(report, assets) {
 
   if (report.statsTable) {
     const st = wb.addWorksheet("Statistics", { views: [{ showGridLines: false }] });
-    st.columns = report.statsTable.head.map((_, i) => ({ width: [24, 9, 9, 11, 11, 11, 30, 30][i] }));
+    st.columns = report.statsTable.head.map((_, i) => ({ width: [24, 9, 9, 11, 11, 11, 30, 30, 30][i] }));
     st.mergeCells(1, 1, 1, report.statsTable.head.length);
     st.getCell(1, 1).value = report.statsTable.title + " – " + report.info.find(([k]) => k === "Section")[1];
     st.getCell(1, 1).font = font({ bold: true, size: 12, color: { argb: "FF" + MAROON } });
@@ -408,7 +408,7 @@ export async function buildPdfDoc(report, assets) {
   const st = report.statsTable;
   if (st) {
     // heading + note, the header row and the rows; start a new page only if they would not fit
-    const needed = 7 + 7 + 8 * st.rows.length;
+    const needed = 7 + 7 + 6.5 * st.rows.length;
     if (endY + needed > H - 58) { doc.addPage(); bg(); endY = 58; }
     doc.setFont("helvetica", "bold").setFontSize(10).setTextColor(0, 0, 0).text(st.title, 15, endY);
     doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(68, 68, 68).text(st.note, 15, endY + 4.5);

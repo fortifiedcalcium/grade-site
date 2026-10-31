@@ -164,3 +164,19 @@ describe("pass count line", () => {
     expect(without.summary).toBe("");
   });
 });
+
+describe("average scored by", () => {
+  it("is the student closest to the average, and everyone tied for closest", () => {
+    const s = summarizeNamed([{ name: "A", value: 10 }, { name: "B", value: 20 }, { name: "C", value: 30 }, { name: "D", value: 40 }]);
+    expect(s.avg).toBe(25);
+    expect(s.closest).toEqual(["B", "C"]);          // both are 5 away
+    expect(summarizeNamed([{ name: "A", value: 10 }, { name: "B", value: 14 }, { name: "C", value: 30 }]).closest).toEqual(["B"]);   // avg 18, B is 4 away
+    expect(summarizeNamed([]).closest).toEqual([]);
+  });
+  it("appears in the statistics table and on the report", () => {
+    const r = buildReport({ sec, meta: {}, students: raw, view: {} });
+    expect(r.statsTable.head.at(-1)).toBe("Average scored by");
+    expect(r.statsTable.rows[0]).toHaveLength(9);
+    expect(r.statsTable.rows.every((row) => row.at(-1) !== "")).toBe(true);
+  });
+});
