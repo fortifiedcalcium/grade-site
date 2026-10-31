@@ -59,21 +59,24 @@ class FakeSheet {
   setColumnWidth() {}
 }
 
-function makeEnv({ students, template, quota = 100, user = "teacher@gmail.com", answer = "YES", failFor = [] }) {
+function makeEnv({ students, template, quota = 100, user = "teacher@gmail.com", answer = "YES", failFor = [], extraSheets = [] }) {
   const sent = [];
   const sheets = [new FakeSheet("Students", [HEAD, ...students])];
   if (template !== null) sheets.push(new FakeSheet("Template", template || defaultTemplate()));
+  extraSheets.forEach((x) => sheets.push(new FakeSheet(x.name, x.values)));
+  const queue = Array.isArray(answer) ? [...answer] : null;   // a list answers the confirmation boxes in order
   const ui = {
     alerts: [],
     ButtonSet: { YES_NO: "YES_NO", OK: "OK" },
     Button: { YES: "YES", NO: "NO" },
-    alert(...args) { this.alerts.push(args); return args.includes("YES_NO") ? answer : undefined; },
+    alert(...args) { this.alerts.push(args); if (!args.includes("YES_NO")) return undefined; return queue ? (queue.length ? queue.shift() : "NO") : answer; },
     createMenu: () => absorb(),
   };
   const ss = {
     getSheetByName: (n) => sheets.find((s) => s.name === n) || null,
     getSheets: () => sheets,
     insertSheet: (n) => { const s = new FakeSheet(n, [[]]); sheets.push(s); return s; },
+    deleteSheet: (s) => { const i = sheets.indexOf(s); if (i >= 0) sheets.splice(i, 1); },
   };
   const sandbox = {
     SpreadsheetApp: { getUi: () => ui, getActiveSpreadsheet: () => ss, flush() {} },
@@ -223,5 +226,83 @@ describe("test email", () => {
     expect(env.sent[0].subject).toBe("[TEST] PIN for A");
     expect(env.sent[0].body).toContain("PIN: PIN1XYZ");
     expect(statusOf(env, 2)).toBe("");
+  });
+});
+
+describe("adding new students from the New tab", () => {
+  const newTab = (rows, head = HEAD.slice(0, 7)) => ({ name: "New", values: [head, ...rows] });
+  const fileRow = (n, o = {}) => [o.email ?? "", "2026-0000" + n, o.name ?? `LAST${n}, FIRST${n}`, o.first ?? `First${n}`, o.section ?? "A", o.pin ?? "PIN" + n + "XYZ", "https://site.example"];
+
+  it("adds only students who are not in Students yet, at the bottom, and leaves existing rows alone", () => {
+    const existing = [student(1, { status: "Sent 2026-10-30" }), student(2, { email: "typed@mail.test" })];
+    const env = makeEnv({ students: existing, extraSheets: [newTab([fileRow(1), fileRow(2), fileRow(3), fileRow(4)])] });
+    env.sandbox.addNewStudents();
+    const rows = env.students.values;
+    expect(rows).toHaveLength(5);                                    // header + 2 old + 2 new
+    expect(rows[1][7]).toBe("Sent 2026-10-30");                      // untouched
+    expect(rows[2][0]).toBe("typed@mail.test");
+    expect(rows[3].slice(1, 3)).toEqual(["2026-00003", "LAST3, FIRST3"]);
+    expect(rows[3][5]).toBe("PIN3XYZ");
+    expect(rows[3][7]).toBe("");                                     // new rows have no Sent mark
+    expect(rows[4][1]).toBe("2026-00004");
+  });
+  it("matches columns by name, whatever order the New tab has them in", () => {
+    const shuffled = ["PIN", "Name", "Student no.", "Section", "Email", "First name", "Link"];
+    const env = makeEnv({ students: [student(1)], extraSheets: [{ name: "New", values: [shuffled, ["ZZZ999", "NEW, PERSON", "2026-77777", "B", "", "Person", "https://x"]] }] });
+    env.sandbox.addNewStudents();
+    expect(env.students.values[2]).toEqual(["", "2026-77777", "NEW, PERSON", "Person", "B", "ZZZ999", "https://x", ""]);
+  });
+  it("ignores blank lines and a student who appears twice in the file", () => {
+    const env = makeEnv({ students: [student(1)], extraSheets: [newTab([fileRow(5), fileRow(5, { pin: "OTHER1" }), ["", "", "", "", "", "", ""]])] });
+    env.sandbox.addNewStudents();
+    expect(env.students.values).toHaveLength(3);
+    expect(env.students.values[2][5]).toBe("PIN5XYZ");                // the first one wins
+  });
+  it("says so when nobody is new, and writes nothing", () => {
+    const env = makeEnv({ students: [student(1), student(2)], extraSheets: [newTab([fileRow(1), fileRow(2)])] });
+    env.sandbox.addNewStudents();
+    expect(env.students.values).toHaveLength(3);
+    expect(env.ui.alerts.at(-1)[0]).toBe("No new students");
+  });
+  it("reports students whose PIN changed but does not touch their rows", () => {
+    const env = makeEnv({ students: [student(1, { status: "Sent 2026-10-30" })], extraSheets: [newTab([fileRow(1, { pin: "NEWPIN" }), fileRow(9)])] });
+    env.sandbox.addNewStudents();
+    const prompt = env.ui.alerts.find((a) => a[0] === "Add new students")[1];
+    expect(prompt).toMatch(/1 student\(s\) already in the sheet have a different PIN/);
+    expect(prompt).toContain("LAST1, FIRST1");
+    expect(env.students.values[1][5]).toBe("PIN1XYZ");              // old PIN kept
+    expect(env.students.values[1][7]).toBe("Sent 2026-10-30");      // still marked Sent
+  });
+  it("adds nothing if you answer No", () => {
+    const env = makeEnv({ students: [student(1)], answer: "NO", extraSheets: [newTab([fileRow(8)])] });
+    env.sandbox.addNewStudents();
+    expect(env.students.values).toHaveLength(2);
+    expect(env.ss.getSheetByName("New")).toBeTruthy();
+  });
+  it("offers to delete the New tab afterwards, because it holds PINs", () => {
+    const keep = makeEnv({ students: [student(1)], answer: ["YES", "NO"], extraSheets: [newTab([fileRow(8)])] });
+    keep.sandbox.addNewStudents();
+    expect(keep.students.values).toHaveLength(3);
+    expect(keep.ss.getSheetByName("New")).toBeTruthy();
+    const drop = makeEnv({ students: [student(1)], answer: ["YES", "YES"], extraSheets: [newTab([fileRow(8)])] });
+    drop.sandbox.addNewStudents();
+    expect(drop.ss.getSheetByName("New")).toBeNull();
+    expect(drop.ui.alerts.at(-1)[1]).toMatch(/Delete the "New" tab/);
+  });
+  it("explains what to do when there is no New tab or a column is missing", () => {
+    const noTab = makeEnv({ students: [student(1)] });
+    noTab.sandbox.addNewStudents();
+    expect(noTab.ui.alerts.at(-1)[0]).toMatch(/tab named "New"/);
+    const noId = makeEnv({ students: [student(1)], extraSheets: [{ name: "New", values: [["Email", "Name"], ["a@b.co", "X"]] }] });
+    noId.sandbox.addNewStudents();
+    expect(noId.ui.alerts.at(-1)[0]).toMatch(/needs a column called "Student no\."/);
+    expect(noId.students.values).toHaveLength(2);
+  });
+  it("new students are then emailed, and the earlier ones are not emailed again", () => {
+    const env = makeEnv({ students: [student(1)], extraSheets: [newTab([fileRow(1), fileRow(6, { email: "new6@mail.test" })])] });
+    env.sandbox.sendAll();                 // student 1 goes out
+    env.sandbox.addNewStudents();
+    env.sandbox.sendAll();                 // only the new student goes out
+    expect(env.sent.map((m) => m.to)).toEqual(["s1@mail.test", "new6@mail.test"]);
   });
 });

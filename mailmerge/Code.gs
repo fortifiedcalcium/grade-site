@@ -12,6 +12,7 @@
 
 var DATA_SHEET = "Students";
 var TEMPLATE_SHEET = "Template";
+var NEW_SHEET = "New";
 var STATUS_HEADER = "Status";
 var REQUIRED_HEADERS = ["Email", "Student no.", "Name", "PIN"];
 var MAX_RUN_MS = 5 * 60 * 1000; // Apps Script stops a run at 6 minutes; stop early and resume next time
@@ -43,6 +44,7 @@ function onOpen() {
     .addItem("Send a test email to me", "sendTest")
     .addItem("Send PINs to students", "sendAll")
     .addSeparator()
+    .addItem("Add new students from the 'New' tab", "addNewStudents")
     .addItem("Show today's remaining email limit", "showQuota")
     .addItem("Clear all 'Sent' marks", "clearStatus")
     .addItem("Create the Template sheet", "createTemplateSheet")
@@ -55,6 +57,34 @@ function sendAll() {
 
 function sendTest() {
   runMerge_(true);
+}
+
+/* Adds the students that are in the "New" tab (a fresh file from the app) but not yet in "Students".
+   Existing rows, the emails you typed and the Sent marks are left alone. */
+function addNewStudents() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var target = getDataSheet_();
+  if (!target) return ui.alert('I cannot find the "' + DATA_SHEET + '" sheet.');
+  var source = ss.getSheetByName(NEW_SHEET);
+  if (!source) return ui.alert('Import the new file from the app into a tab named "' + NEW_SHEET + '" first, then run this again.');
+
+  var plan = planNewStudents_(target.getDataRange().getValues(), source.getDataRange().getValues());
+  if (plan.error) return ui.alert(plan.error);
+  var changed = plan.changedPins.length
+    ? "\n\n" + plan.changedPins.length + " student(s) already in the sheet have a different PIN in the new file (" + plan.changedPins.slice(0, 5).join(", ") + (plan.changedPins.length > 5 ? ", ..." : "") +
+      "). I left their rows alone. To send them the new PIN, change their PIN cell and clear their Status cell."
+    : "";
+  if (!plan.rows.length) return ui.alert("No new students", "Everyone in the \"" + NEW_SHEET + "\" tab is already in the sheet (" + plan.existing + " student(s))." + changed, ui.ButtonSet.OK);
+
+  var answer = ui.alert("Add new students", "Add " + plan.rows.length + " new student(s) to the bottom of \"" + target.getName() + "\"? " + plan.existing + " are already there." + changed, ui.ButtonSet.YES_NO);
+  if (answer !== ui.Button.YES) return;
+  var firstRow = target.getDataRange().getValues().length + 1;
+  target.getRange(firstRow, 1, plan.rows.length, plan.width).setValues(plan.rows);
+  SpreadsheetApp.flush();
+
+  var drop = ui.alert("Added " + plan.rows.length + " student(s)", "Fill in their Email cells, then run \"Send PINs to students\".\n\nDelete the \"" + NEW_SHEET + "\" tab now? It holds every student's PIN.", ui.ButtonSet.YES_NO);
+  if (drop === ui.Button.YES) ss.deleteSheet(source);
 }
 
 function showQuota() {
@@ -243,6 +273,46 @@ function readConfig_(ss) {
 }
 
 /* ------------------------------------------------------------------ pure helpers */
+
+/* Which rows of `sourceData` are not in `targetData` yet (matched by student number), laid out in the
+   target's column order. Existing students are never changed; ones whose PIN differs are only reported. */
+function planNewStudents_(targetData, sourceData) {
+  var tHeaders = headerNames_(targetData[0] || []);
+  var sHeaders = headerNames_(sourceData[0] || []);
+  var tId = headerIndex_(tHeaders, "Student no.");
+  var sId = headerIndex_(sHeaders, "Student no.");
+  if (tId < 0) return { error: 'The "Students" sheet needs a column called "Student no."' };
+  if (sId < 0) return { error: 'The "' + NEW_SHEET + '" tab needs a column called "Student no." (import the file from the app).' };
+  var tPin = headerIndex_(tHeaders, "PIN");
+  var sPin = headerIndex_(sHeaders, "PIN");
+  var sName = headerIndex_(sHeaders, "Name");
+
+  var have = {};
+  for (var r = 1; r < targetData.length; r++) {
+    var key = String(targetData[r][tId] == null ? "" : targetData[r][tId]).trim().toLowerCase();
+    if (key) have[key] = tPin >= 0 ? String(targetData[r][tPin]).trim() : "";
+  }
+  var plan = { rows: [], existing: 0, changedPins: [], width: tHeaders.length, error: "" };
+  var added = {};
+  for (var i = 1; i < sourceData.length; i++) {
+    var row = sourceData[i];
+    var id = String(row[sId] == null ? "" : row[sId]).trim().toLowerCase();
+    if (!id || added[id]) continue;
+    if (Object.prototype.hasOwnProperty.call(have, id)) {
+      plan.existing++;
+      if (tPin >= 0 && sPin >= 0 && String(row[sPin]).trim() !== have[id]) plan.changedPins.push(sName >= 0 && row[sName] ? String(row[sName]) : String(row[sId]));
+      continue;
+    }
+    added[id] = true;
+    var out = [];
+    for (var c = 0; c < tHeaders.length; c++) {
+      var at = headerIndex_(sHeaders, tHeaders[c]);
+      out.push(at >= 0 && tHeaders[c].toLowerCase() !== STATUS_HEADER.toLowerCase() && row[at] != null ? row[at] : "");
+    }
+    plan.rows.push(out);
+  }
+  return plan;
+}
 
 function headerNames_(row) {
   var out = [];

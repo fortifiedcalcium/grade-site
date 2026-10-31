@@ -31,6 +31,7 @@ This file contains PINs. Keep it private and delete it when you are done.
 2. Delete the code that is there, then paste the whole of `mailmerge/Code.gs`. On a Mac you can copy it with
    `pbcopy < mailmerge/Code.gs` in the terminal.
 3. Click the save icon, then reload the Google Sheet tab. A new menu **PIN Mail Merge** appears.
+   (When a newer `Code.gs` is released, paste it over the old one the same way and save.)
 
 ## 4. Write the message
 
@@ -64,6 +65,16 @@ If the message uses a `{{placeholder}}` that is not a column name, the script se
 * **It never sends twice.** Each email sent is marked in the **Status** column (`Sent 2026-10-31 10:00`).
   Run it again tomorrow and it continues with the students who are still waiting. Rows with no valid email
   or no PIN are marked `Skipped: ...`; fix them and run it again.
+* **Adding students later.** Keep using the same Sheet. Do not re-import over the **Students** tab and do not
+  use "Append rows": either one loses your Sent marks or lists everyone twice, and they would be emailed again.
+  Instead:
+  1. In the app, download a fresh **Mail merge file** (it lists everyone).
+  2. In the Sheet, add a new tab named **New** (the **+** at the bottom) and import the file into it.
+  3. **PIN Mail Merge > Add new students from the 'New' tab.** It adds only the students who are not in
+     **Students** yet, at the bottom, and leaves your existing rows, emails and Sent marks alone. It also tells
+     you if any existing student has a different PIN in the new file (it does not change them).
+  4. Answer Yes to delete the **New** tab (it holds every PIN), fill in the new students' emails, and run
+     **Send PINs to students**. Only the new rows go out.
 * **Sending to one student again** (for example after you reset their PIN in the app): update the PIN cell,
   clear that row's Status cell, and run **Send PINs to students**. Everyone else stays marked Sent.
 * **Start over:** **Clear all 'Sent' marks** makes the next run email everyone again.
