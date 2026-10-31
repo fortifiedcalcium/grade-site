@@ -7,7 +7,7 @@
      student rows: No. | ID | Name | scores
    A column is a graded item only when the maximum row has a number above 1 for it. */
 
-import { DEFAULT_SCALE, DEFAULT_SCALE_NOTE, computeGrade, isNum } from "./grading.js";
+import { DEFAULT_SCALE, DEFAULT_SCALE_NOTE, computeGrade, isCompleteScale, isNum } from "./grading.js";
 import { normId, safeId } from "./keys.js";
 
 const txt = (v) => (v == null ? "" : String(v).trim());
@@ -159,6 +159,13 @@ function parseSheet(name, aoa) {
         break;
       }
     }
+  }
+
+  if (scale && !isCompleteScale(scale)) {
+    const last = scale[scale.length - 1];
+    warnings.push("Section " + name + ": the grade equivalent table in the file stops at \"" + last.range + "\" and does not reach 100, so the standard table is used instead. Fill in the missing rows in the sheet if you need a different one.");
+    scale = null;
+    scaleNote = "";
   }
 
   // students

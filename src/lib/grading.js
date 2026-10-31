@@ -22,8 +22,18 @@ export const DEFAULT_SCALE = [
 export const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 export const hasValue = (v) => isNum(v) || (typeof v === "string" && v.trim() !== "");
 
+/* A table that stops short of the top (for example a workbook sheet whose lower rows were left blank) would
+   give every high score the equivalent of its last row, so it is not trusted: the highest row must reach 100. */
+export function isCompleteScale(scale) {
+  if (!Array.isArray(scale) || scale.length < 2) return false;
+  const top = [...scale].sort((a, b) => a.min - b.min)[scale.length - 1];
+  return /100(\.0+)?\s*$|above|up/i.test(String((top && top.range) || ""));
+}
+
+export const usableScale = (scale) => (isCompleteScale(scale) ? scale : DEFAULT_SCALE);
+
 export function lookupEquivalent(scale, total) {
-  const rows = [...(scale && scale.length ? scale : DEFAULT_SCALE)].sort((a, b) => a.min - b.min);
+  const rows = [...usableScale(scale)].sort((a, b) => a.min - b.min);
   let eq = rows[0].eq;
   for (const r of rows) if (total >= r.min) eq = r.eq;
   return eq;

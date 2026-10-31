@@ -86,3 +86,29 @@ describe("sections and items", () => {
     keys.forEach((k) => expect(k).toMatch(/^[A-Za-z0-9_]+$/));
   });
 });
+
+describe("incomplete grade equivalent table", () => {
+  // what the 2A sheet of the class record contained: the rows from 81.50 up were blank
+  const truncated = [
+    { min: 0, eq: 5, range: "Below 75.00" },
+    { min: 75, eq: 3, range: "75.00-75.49" },
+    { min: 75.5, eq: 2.75, range: "75.50-78.49" },
+    { min: 78.5, eq: 2.5, range: "78.50-81.49" },
+  ];
+  it("is detected, and the full standard table is used so high scores are graded correctly", async () => {
+    const { isCompleteScale, lookupEquivalent, usableScale } = await import("../src/lib/grading.js");
+    expect(isCompleteScale(truncated)).toBe(false);
+    expect(isCompleteScale(DEFAULT_SCALE)).toBe(true);
+    expect(isCompleteScale(null)).toBe(false);
+    expect(usableScale(truncated)).toBe(DEFAULT_SCALE);
+    expect(lookupEquivalent(truncated, 92)).toBe(1.5);
+    expect(lookupEquivalent(truncated, 97)).toBe(1);
+    expect(lookupEquivalent(truncated, 82)).toBe(2.25);
+    expect(lookupEquivalent(truncated, 76)).toBe(2.75);
+  });
+  it("keeps a custom table that does reach the top", async () => {
+    const { usableScale } = await import("../src/lib/grading.js");
+    const custom = [{ min: 0, eq: 5, range: "Below 60" }, { min: 60, eq: 3, range: "60-100" }];
+    expect(usableScale(custom)).toBe(custom);
+  });
+});

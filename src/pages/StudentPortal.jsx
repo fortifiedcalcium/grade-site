@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { getDb } from "../supabase.js";
 import { createStudentApi } from "../lib/db.js";
-import { computeGrade, hasValue, isNum } from "../lib/grading.js";
+import { computeGrade, hasValue, isNum, usableScale } from "../lib/grading.js";
 import { fmt2, fmtNum, fmtDate } from "../lib/util.js";
 
 const ERRORS = {
@@ -142,7 +142,7 @@ function GradeView({ data, onRefresh, onLogout, busy }) {
             <table className="grid">
               <thead><tr><th>Range</th><th className="num">Equivalent</th></tr></thead>
               <tbody>
-                {[...(view.scheme.scale || [])].sort((a, b) => b.min - a.min).map((r) => (
+                {[...usableScale(view.scheme.scale)].sort((a, b) => b.min - a.min).map((r) => (
                   <tr key={r.min} className={r.eq === view.grade.equiv && !view.grade.pending ? "hl" : ""}>
                     <td>{r.range}</td><td className="num">{r.eq.toFixed(2)}</td>
                   </tr>
