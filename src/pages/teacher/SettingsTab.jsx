@@ -54,6 +54,7 @@ function SectionEditor({ db, id, section, roster }) {
         <label>Passing equivalent (at or below)<input type="number" step="0.25" value={s.scheme.passEquiv} onChange={(e) => setS({ ...s, scheme: { ...s.scheme, passEquiv: Number(e.target.value) } })} /></label>
         <label className="inline"><input type="checkbox" checked={!!s.scheme.holdFinal} onChange={(e) => setS({ ...s, scheme: { ...s.scheme, holdFinal: e.target.checked } })} /> Show "pending" until the final exam is recorded</label>
       </div>
+      <div className="scroll">
       <table className="grid">
         <thead><tr><th>Category</th><th className="num">Weight %</th><th>Items (max score)</th><th><span className="sr-only">Remove category</span></th></tr></thead>
         <tbody>
@@ -76,6 +77,7 @@ function SectionEditor({ db, id, section, roster }) {
           ))}
         </tbody>
       </table>
+      </div>
       <p><button type="button" className="btn small" onClick={addCategory}>+ Add category</button></p>
       {total !== 100 && <p className="error">Weights add up to {total}%, not 100%.</p>}
       <p className="muted small">Changing a maximum score or weight changes every student's computed grade immediately.</p>

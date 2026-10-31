@@ -55,6 +55,8 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
   const [show, setShow] = useState("both");
   const [hiddenCats, setHiddenCats] = useState([]);
   const [showFinal, setShowFinal] = useState(true);
+  // the column picker starts open on wide screens and folded away on phones, where space is tight
+  const [colsOpen, setColsOpen] = useState(() => !window.matchMedia || window.matchMedia("(min-width: 900px)").matches);
   const sec = sections[secId] || sections[secIds[0]];
   const activeId = sections[secId] ? secId : secIds[0];
 
@@ -186,14 +188,16 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
             <option value="stats">Statistics only</option>
           </select>
         </label>
-        <fieldset className="colpick">
-          <legend>Columns</legend>
-          {allCats.map((c) => (
-            <label className="inline" key={c.id}><input type="checkbox" checked={!hiddenCats.includes(c.id)} onChange={() => toggleCat(c.id)} /> {c.title}</label>
-          ))}
-          <label className="inline"><input type="checkbox" checked={showFinal} onChange={(e) => setShowFinal(e.target.checked)} /> Final grade</label>
-          <button type="button" className="btn small" onClick={() => { setHiddenCats([]); setShowFinal(true); }}>Show all</button>
-        </fieldset>
+        <details className="colpick" open={colsOpen} onToggle={(e) => setColsOpen(e.currentTarget.open)}>
+          <summary>Columns <span className="muted small">({cats.length + (showFinal ? 1 : 0)} of {allCats.length + 1} shown)</span></summary>
+          <div className="colpick-body">
+            {allCats.map((c) => (
+              <label className="inline" key={c.id}><input type="checkbox" checked={!hiddenCats.includes(c.id)} onChange={() => toggleCat(c.id)} /> {c.title}</label>
+            ))}
+            <label className="inline"><input type="checkbox" checked={showFinal} onChange={(e) => setShowFinal(e.target.checked)} /> Final grade</label>
+            <button type="button" className="btn small" onClick={() => { setHiddenCats([]); setShowFinal(true); }}>Show all</button>
+          </div>
+        </details>
       </div>
       <div className="card flush">
         <div className="scroll tall">

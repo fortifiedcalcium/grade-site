@@ -17,16 +17,16 @@ const TABS = [
 ];
 
 /* Same frame as the instructor page: header with the logo, tab bar, then cards and grid tables. */
-function GradeView({ data, onRefresh, onLogout, busy }) {
+export function GradeView({ data, onRefresh, onLogout, busy, initialTab = "summary" }) {
   const { record, section, meta } = data;
-  const [tab, setTab] = useState("summary");
+  const [tab, setTab] = useState(initialTab);
   const view = useMemo(() => {
     if (!section || !section.scheme) return null;
     return { grade: computeGrade(section.scheme, record.s), scheme: section.scheme };
   }, [record, section]);
 
   return (
-    <main className="shell wide">
+    <main className="shell wide mid">
       <header className="topbar">
         <div className="brand">
           <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />

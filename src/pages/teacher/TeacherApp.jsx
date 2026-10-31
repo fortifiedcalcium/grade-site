@@ -86,9 +86,9 @@ const TABS = [
   ["settings", "Settings"],
 ];
 
-function Dashboard({ user }) {
+export function Dashboard({ user, initialTab = "grades" }) {
   const db = getDb();
-  const [tab, setTab] = useState("grades");
+  const [tab, setTab] = useState(initialTab);
   const [meta, setMeta] = useState(undefined);
   const [sections, setSections] = useState(undefined);
   const [roster, setRoster] = useState(undefined);

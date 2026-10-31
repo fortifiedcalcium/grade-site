@@ -84,10 +84,9 @@ export default function PinsTab({ db, meta, sections, roster }) {
                   <td>{id}</td>
                   <td>{r.name}</td>
                   <td className="mono">{show ? r.pin : "••••••"}</td>
-                  <td className="noprint right">
-                    <button className="btn small" disabled={busy} onClick={() => window.confirm("Make a new PIN for " + r.name + "? The old PIN will stop working.") && guard(async () => { const p = await resetPin(db, meta, id, r); setMsg("New PIN for " + id + ": " + p); })}>Reset PIN</button>{" "}
-                    <button className="btn small danger" disabled={busy} onClick={() => window.confirm("Delete " + r.name + " and all of their scores?") && guard(() => removeStudent(db, id, r.key))}>Delete</button>
-                  </td>
+                  <td className="noprint right"><div className="actions">
+                    <button className="btn small" disabled={busy} onClick={() => window.confirm("Make a new PIN for " + r.name + "? The old PIN will stop working.") && guard(async () => { const p = await resetPin(db, meta, id, r); setMsg("New PIN for " + id + ": " + p); })}>Reset PIN</button>
+                    <button className="btn small danger" disabled={busy} onClick={() => window.confirm("Delete " + r.name + " and all of their scores?") && guard(() => removeStudent(db, id, r.key))}>Delete</button></div></td>
                 </tr>
               ))}
               {!rows.length && <tr><td colSpan={5} className="muted">No students.</td></tr>}

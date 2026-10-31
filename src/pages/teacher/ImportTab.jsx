@@ -54,6 +54,7 @@ export default function ImportTab({ db, meta, sections, roster }) {
       {parsed && (
         <div className="card">
           <h2>Ready to import: {fileName}</h2>
+          <div className="scroll">
           <table className="grid">
             <thead><tr><th>Section</th><th className="num">Students</th><th>Categories</th></tr></thead>
             <tbody>
@@ -62,6 +63,7 @@ export default function ImportTab({ db, meta, sections, roster }) {
               ))}
             </tbody>
           </table>
+          </div>
           {parsed.notes.map((n, i) => <p key={"n" + i} className="muted small">{n}</p>)}
           {parsed.warnings.length > 0 && (
             <details open>
