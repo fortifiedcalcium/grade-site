@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import Icon from "../Icon.jsx";
 import { getDb } from "../supabase.js";
 import { createStudentApi } from "../lib/db.js";
 import { computeGrade, hasValue, isNum, usableScale } from "../lib/grading.js";
@@ -11,9 +12,9 @@ const ERRORS = {
 };
 
 const TABS = [
-  ["summary", "Summary"],
-  ["scores", "Scores"],
-  ["scale", "Grade scale"],
+  ["summary", "Summary", "summary"],
+  ["scores", "Scores", "scores"],
+  ["scale", "Grade scale", "scale"],
 ];
 
 /* Same frame as the instructor page: header with the logo, tab bar, then cards and grid tables. */
@@ -36,13 +37,13 @@ export function GradeView({ data, onRefresh, onLogout, busy, initialTab = "summa
           </div>
         </div>
         <div className="row">
-          <button className="btn ghost" onClick={onRefresh} disabled={busy}>{busy ? "Refreshing…" : "Refresh"}</button>
-          <button className="btn ghost" onClick={onLogout}>Sign out</button>
+          <button className="btn ghost" onClick={onRefresh} disabled={busy}><Icon name="refresh" /> {busy ? "Refreshing…" : "Refresh"}</button>
+          <button className="btn ghost" onClick={onLogout}><Icon name="logout" /> Sign out</button>
         </div>
       </header>
       <nav className="tabs" role="tablist">
-        {TABS.map(([id, label]) => (
-          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{label}</button>
+        {TABS.map(([id, label, icon]) => (
+          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}><Icon name={icon} /> {label}</button>
         ))}
       </nav>
 
@@ -193,7 +194,7 @@ export default function StudentPortal() {
   if (data) {
     return (
       <>
-        {error && <div className="banner">{error}</div>}
+        {error && <div className="banner" role="alert"><Icon name="alert" /> {error}</div>}
         <GradeView data={data} busy={busy} onRefresh={() => run(() => api.refresh(data.key))} onLogout={logout} />
       </>
     );
@@ -213,10 +214,10 @@ export default function StudentPortal() {
           PIN
           <input value={pin} onChange={(e) => setPin(e.target.value)} type="password" autoComplete="current-password" placeholder="6-character PIN" />
         </label>
-        {error && <p className="error" role="alert">{error}</p>}
-        <button className="btn primary" disabled={busy}>{busy ? "Checking…" : "View my grades"}</button>
+        {error && <p className="error" role="alert"><Icon name="alert" /> {error}</p>}
+        <button className="btn primary" disabled={busy}><Icon name="login" /> {busy ? "Checking…" : "View my grades"}</button>
         <p className="muted small">Your grades are private. Do not share your PIN.</p>
-        <p className="small center"><a href="/teacher">Instructor sign in</a></p>
+        <p className="small center"><a href="/teacher"><Icon name="user" /> Instructor sign in</a></p>
       </form>
     </main>
   );

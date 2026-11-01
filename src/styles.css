@@ -170,3 +170,9 @@ details > summary { cursor: pointer; }
 @media (min-width: 1500px) {
   .shell.wide:not(.mid) { max-width: 1600px; }
 }
+
+/* Icons: decorative SVGs that follow the text colour and sit on the text baseline. */
+.icon { display: inline-block; vertical-align: -0.2em; flex: none; }
+.btn .icon, .tabs button .icon { margin-right: 2px; }
+.btn:has(> .icon:only-child) .icon { margin-right: 0; }
+.error .icon, .banner .icon { vertical-align: -0.2em; }

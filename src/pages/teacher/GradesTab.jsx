@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import Icon from "../../Icon.jsx";
 import { computeGrade, isNum } from "../../lib/grading.js";
 import { addStudent, clearSectionScores, removeStudent, removeStudents, saveScore } from "../../lib/db.js";
 import { useSelection } from "../../lib/useSelection.js";
@@ -78,7 +79,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
     return (
       <div className="card">
         <p>No sections yet. Import your class record, or add a section under Settings.</p>
-        <button className="btn primary" onClick={goImport}>Go to Import</button>
+        <button className="btn primary" onClick={goImport}><Icon name="import" /> Go to Import</button>
       </div>
     );
   }
@@ -161,12 +162,12 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
             {FORMATS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
         </label>
-        <button className="btn" disabled={exporting || !rows.length} onClick={exportReport}>{exporting ? "Exporting…" : "Export"}</button>
-        <button className="btn danger" disabled={busy} onClick={clearScores}>Clear all scores</button>
+        <button className="btn" disabled={exporting || !rows.length} onClick={exportReport}><Icon name="download" /> {exporting ? "Exporting…" : "Export"}</button>
+        <button className="btn danger" disabled={busy} onClick={clearScores}><Icon name="trash" /> Clear all scores</button>
         {sel.selected.length > 0 && (
           <>
-            <button className="btn danger" disabled={busy} onClick={removeSelected}>Delete selected ({sel.selected.length})</button>
-            <button className="btn ghost" onClick={sel.clear}>Clear selection</button>
+            <button className="btn danger" disabled={busy} onClick={removeSelected}><Icon name="trash" /> Delete selected ({sel.selected.length})</button>
+            <button className="btn ghost" onClick={sel.clear}><Icon name="close" /> Clear selection</button>
           </>
         )}
       </div>
@@ -195,7 +196,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
               <label className="inline" key={c.id}><input type="checkbox" checked={!hiddenCats.includes(c.id)} onChange={() => toggleCat(c.id)} /> {c.title}</label>
             ))}
             <label className="inline"><input type="checkbox" checked={showFinal} onChange={(e) => setShowFinal(e.target.checked)} /> Final grade</label>
-            <button type="button" className="btn small" onClick={() => { setHiddenCats([]); setShowFinal(true); }}>Show all</button>
+            <button type="button" className="btn small" onClick={() => { setHiddenCats([]); setShowFinal(true); }}><Icon name="eye" /> Show all</button>
           </div>
         </details>
       </div>
@@ -237,7 +238,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
                         <td className={g.pending ? "muted" : g.remarks === "Passed" ? "ok" : "bad"}>{g.pending ? "Pending" : g.remarks}</td>
                       </>
                     )}
-                    <td><button className="btn small danger" disabled={busy} aria-label={"Delete " + r.name} onClick={() => remove(r)}>Delete</button></td>
+                    <td><button className="btn small danger" disabled={busy} aria-label={"Delete " + r.name} onClick={() => remove(r)}><Icon name="trash" /> Delete</button></td>
                   </tr>
                 );
               })}
@@ -292,12 +293,12 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
           </div>
         </section>
       )}
-      {msg && <div className="banner info" role="status">{msg}</div>}
+      {msg && <div className="banner info" role="status"><Icon name="info" /> {msg}</div>}
       <form className="card row noprint" onSubmit={add}>
         <strong>Add a student to this section</strong>
         <input aria-label="Student number" placeholder="Student number" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} />
         <input aria-label="Full name" placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <button className="btn primary" disabled={busy}>Add</button>
+        <button className="btn primary" disabled={busy}><Icon name="plus" /> Add</button>
       </form>
       <p className="muted small">Leave a cell empty for no score (counts as 0). Text such as INC or DRP is shown to the student but counts as 0.</p>
     </>

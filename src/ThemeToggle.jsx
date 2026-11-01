@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Icon from "./Icon.jsx";
 import { applyTheme, getTheme, saveTheme } from "./lib/theme.js";
 
 export default function ThemeToggle() {
@@ -12,7 +13,7 @@ export default function ThemeToggle() {
   };
   return (
     <button type="button" className="btn theme-toggle noprint" onClick={toggle} aria-pressed={dark} aria-label="Dark theme">
-      <span aria-hidden="true">{dark ? "☀" : "☾"}</span> {dark ? "Light" : "Dark"}
+      <Icon name={dark ? "sun" : "moon"} /> {dark ? "Light" : "Dark"}
     </button>
   );
 }

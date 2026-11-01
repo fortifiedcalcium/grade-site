@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Icon from "../../Icon.jsx";
 import { addSection, clearSectionScores, deleteSection, newCategoryId, newItemKey, saveMeta, saveSection } from "../../lib/db.js";
 
 function SectionEditor({ db, id, section, roster }) {
@@ -67,24 +68,24 @@ function SectionEditor({ db, id, section, roster }) {
                   <span className="chip" key={it.k}>
                     <input className="lbl" aria-label={"Label of " + it.label} value={it.label} onChange={(e) => setItem(ci, ii, { label: e.target.value })} />
                     <input className="short" aria-label={"Maximum score of " + it.label} type="number" value={it.max} onChange={(e) => setItem(ci, ii, { max: Number(e.target.value) })} />
-                    <button type="button" className="btn small danger" aria-label={"Remove " + it.label} onClick={() => removeItem(ci, ii)}>✕</button>
+                    <button type="button" className="btn small danger" aria-label={"Remove " + it.label} onClick={() => removeItem(ci, ii)}><Icon name="close" /></button>
                   </span>
                 ))}
-                <button type="button" className="btn small" onClick={() => addItem(ci)}>+ Item</button>
+                <button type="button" className="btn small" onClick={() => addItem(ci)}><Icon name="plus" /> Item</button>
               </td>
-              <td><button type="button" className="btn small danger" onClick={() => removeCategory(ci)}>Remove</button></td>
+              <td><button type="button" className="btn small danger" onClick={() => removeCategory(ci)}><Icon name="trash" /> Remove</button></td>
             </tr>
           ))}
         </tbody>
       </table>
       </div>
-      <p><button type="button" className="btn small" onClick={addCategory}>+ Add category</button></p>
-      {total !== 100 && <p className="error">Weights add up to {total}%, not 100%.</p>}
+      <p><button type="button" className="btn small" onClick={addCategory}><Icon name="plus" /> Add category</button></p>
+      {total !== 100 && <p className="error" role="alert"><Icon name="alert" /> Weights add up to {total}%, not 100%.</p>}
       <p className="muted small">Changing a maximum score or weight changes every student's computed grade immediately.</p>
       <div className="row">
-        <button className="btn primary" onClick={save}>Save {s.name}</button>
-        <button type="button" className="btn danger" onClick={clearScores}>Clear all scores</button>
-        <button type="button" className="btn danger" onClick={removeSection}>Delete section</button>
+        <button className="btn primary" onClick={save}><Icon name="save" /> Save {s.name}</button>
+        <button type="button" className="btn danger" onClick={clearScores}><Icon name="trash" /> Clear all scores</button>
+        <button type="button" className="btn danger" onClick={removeSection}><Icon name="trash" /> Delete section</button>
         {msg && <span className="small">{msg}</span>}
       </div>
     </details>
@@ -114,13 +115,13 @@ export default function SettingsTab({ db, meta, sections, roster }) {
           <label>Term<input value={m.term} onChange={(e) => setM({ ...m, term: e.target.value })} /></label>
           <label className="span2">Note shown to students<input value={m.note} onChange={(e) => setM({ ...m, note: e.target.value })} /></label>
         </div>
-        <button className="btn primary">Save</button> {msg && <span className="small">{msg}</span>}
+        <button className="btn primary"><Icon name="save" /> Save</button> {msg && <span className="small">{msg}</span>}
       </form>
       <h2>Sections</h2>
       <form className="card row" onSubmit={createSection}>
         <strong>Add a section</strong>
         <input aria-label="New section name" placeholder="Section name, e.g. BSIT 3-A" value={newName} onChange={(e) => setNewName(e.target.value)} />
-        <button className="btn primary">Add section</button>
+        <button className="btn primary"><Icon name="plus" /> Add section</button>
         {secMsg && <span className="small" role="status">{secMsg}</span>}
       </form>
       {Object.keys(sections).length === 0 && <p className="muted">No sections yet. Add one above or import a class record.</p>}

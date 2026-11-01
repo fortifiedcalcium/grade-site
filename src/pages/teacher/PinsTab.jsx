@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import Icon from "../../Icon.jsx";
 import { addStudent, removeStudent, removeStudents, resetPin } from "../../lib/db.js";
 import { useSelection } from "../../lib/useSelection.js";
 import { csvCell, downloadText } from "../../lib/util.js";
@@ -70,17 +71,17 @@ export default function PinsTab({ db, meta, sections, roster }) {
         </label>
         <input className="search" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
         <label className="inline"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show PINs</label>
-        <button className="btn" onClick={exportCsv}>Download PIN list</button>
-        <button className="btn" onClick={() => window.print()}>Print</button>
-        <button className="btn" onClick={exportMailMerge} title="All sections, ready for the Gmail mail merge">Mail merge file</button>
+        <button className="btn" onClick={exportCsv}><Icon name="download" /> Download PIN list</button>
+        <button className="btn" onClick={() => window.print()}><Icon name="print" /> Print</button>
+        <button className="btn" onClick={exportMailMerge} title="All sections, ready for the Gmail mail merge"><Icon name="mail" /> Mail merge file</button>
         {sel.selected.length > 0 && (
           <>
-            <button className="btn danger" disabled={busy} onClick={removeSelected}>Delete selected ({sel.selected.length})</button>
-            <button className="btn ghost" onClick={sel.clear}>Clear selection</button>
+            <button className="btn danger" disabled={busy} onClick={removeSelected}><Icon name="trash" /> Delete selected ({sel.selected.length})</button>
+            <button className="btn ghost" onClick={sel.clear}><Icon name="close" /> Clear selection</button>
           </>
         )}
       </div>
-      {msg && <div className="banner info">{msg}</div>}
+      {msg && <div className="banner info" role="status"><Icon name="info" /> {msg}</div>}
       <div className="card flush">
         <div className="scroll tall">
           <table className="grid">
@@ -93,8 +94,8 @@ export default function PinsTab({ db, meta, sections, roster }) {
                   <td>{r.name}</td>
                   <td className="mono">{show ? r.pin : "••••••"}</td>
                   <td className="noprint right"><div className="actions">
-                    <button className="btn small" disabled={busy} onClick={() => window.confirm("Make a new PIN for " + r.name + "? The old PIN will stop working.") && guard(async () => { const p = await resetPin(db, meta, id, r); setMsg("New PIN for " + id + ": " + p); })}>Reset PIN</button>
-                    <button className="btn small danger" disabled={busy} onClick={() => window.confirm("Delete " + r.name + " and all of their scores?") && guard(() => removeStudent(db, id, r.key))}>Delete</button></div></td>
+                    <button className="btn small" disabled={busy} onClick={() => window.confirm("Make a new PIN for " + r.name + "? The old PIN will stop working.") && guard(async () => { const p = await resetPin(db, meta, id, r); setMsg("New PIN for " + id + ": " + p); })}><Icon name="key" /> Reset PIN</button>
+                    <button className="btn small danger" disabled={busy} onClick={() => window.confirm("Delete " + r.name + " and all of their scores?") && guard(() => removeStudent(db, id, r.key))}><Icon name="trash" /> Delete</button></div></td>
                 </tr>
               ))}
               {!rows.length && <tr><td colSpan={5} className="muted">No students.</td></tr>}
@@ -106,7 +107,7 @@ export default function PinsTab({ db, meta, sections, roster }) {
         <strong>Add a student to this section</strong>
         <input placeholder="Student number" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} />
         <input placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <button className="btn primary" disabled={busy}>Add</button>
+        <button className="btn primary" disabled={busy}><Icon name="plus" /> Add</button>
       </form>
       <p className="muted small noprint">Give each student their own PIN privately. Treat the PIN list like a grade sheet: it is personal data.</p>
     </>

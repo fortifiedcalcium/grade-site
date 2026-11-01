@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import Icon from "../../Icon.jsx";
 import { sheetsFromWorkbook, parseClassRecord } from "../../lib/importer.js";
 import { importData } from "../../lib/db.js";
 
@@ -48,7 +49,7 @@ export default function ImportTab({ db, meta, sections, roster }) {
           Existing students keep their PINs; new students get a new PIN.
         </p>
         <input type="file" accept=".xlsx,.xlsm,.xls,.csv" onChange={onFile} disabled={busy} />
-        {error && <p className="error" role="alert">{error}</p>}
+        {error && <p className="error" role="alert"><Icon name="alert" /> {error}</p>}
       </div>
 
       {parsed && (
@@ -84,7 +85,7 @@ export default function ImportTab({ db, meta, sections, roster }) {
             <label className="span2">Note shown to students<input value={details.note} onChange={(e) => setDetails({ ...details, note: e.target.value })} /></label>
           </div>
           <label className="inline"><input type="checkbox" checked={removeMissing} onChange={(e) => setRemoveMissing(e.target.checked)} /> Delete students that are in the database but not in this file</label>
-          <p><button className="btn primary" onClick={run} disabled={busy}>{busy ? "Importing… " + progress + "/" + parsed.students.length : "Import " + parsed.students.length + " students"}</button></p>
+          <p><button className="btn primary" onClick={run} disabled={busy}><Icon name="import" /> {busy ? "Importing… " + progress + "/" + parsed.students.length : "Import " + parsed.students.length + " students"}</button></p>
         </div>
       )}
 

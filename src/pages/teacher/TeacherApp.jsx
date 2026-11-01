@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import Icon from "../../Icon.jsx";
 import { getAuth, getDb } from "../../supabase.js";
 import { isTeacher, listen } from "../../lib/db.js";
 import { describeAuthError } from "../../lib/authErrors.js";
@@ -53,12 +54,12 @@ function SignIn() {
         <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" /></label>
         <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={register ? "new-password" : "current-password"} /></label>
         {register && <label>Confirm password<input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" /></label>}
-        {notice && <p className="banner info" role="status">{notice}</p>}
-        {error && <p className="error" role="alert">{error}</p>}
-        <button className="btn primary" disabled={busy}>{busy ? (register ? "Creating…" : "Signing in…") : (register ? "Create account" : "Sign in")}</button>
+        {notice && <p className="banner info" role="status"><Icon name="info" /> {notice}</p>}
+        {error && <p className="error" role="alert"><Icon name="alert" /> {error}</p>}
+        <button className="btn primary" disabled={busy}><Icon name="login" /> {busy ? (register ? "Creating…" : "Signing in…") : (register ? "Create account" : "Sign in")}</button>
         <p className="small center">
           <a href="#" onClick={(e) => { e.preventDefault(); setRegister(!register); setError(""); setNotice(""); }}>{register ? "Have an account? Sign in" : "Need an account? Register"}</a>
-          {" · "}<a href="/">Student view</a>
+          {" · "}<a href="/"><Icon name="back" /> Student view</a>
         </p>
       </form>
     </main>
@@ -73,17 +74,17 @@ function NotAdmin({ user }) {
         <p>This account is signed in but is not marked as an instructor. In Supabase, open the SQL Editor and run:</p>
         <pre className="code">{`insert into public.admins (user_id)\nvalues ('${user.id}');`}</pre>
         <p className="muted small">Then reload this page.</p>
-        <button className="btn" onClick={() => getAuth().signOut()}>Sign out</button>
+        <button className="btn" onClick={() => getAuth().signOut()}><Icon name="logout" /> Sign out</button>
       </div>
     </main>
   );
 }
 
 const TABS = [
-  ["grades", "Grades"],
-  ["pins", "Students & PINs"],
-  ["import", "Import"],
-  ["settings", "Settings"],
+  ["grades", "Grades", "grades"],
+  ["pins", "Students & PINs", "users"],
+  ["import", "Import", "import"],
+  ["settings", "Settings", "settings"],
 ];
 
 export function Dashboard({ user, initialTab = "grades" }) {
@@ -126,16 +127,16 @@ export function Dashboard({ user, initialTab = "grades" }) {
           </div>
         </div>
         <div className="row">
-          <a className="btn ghost" href="/">Student view</a>
-          <button className="btn ghost" onClick={() => getAuth().signOut()}>Sign out</button>
+          <a className="btn ghost" href="/"><Icon name="eye" /> Student view</a>
+          <button className="btn ghost" onClick={() => getAuth().signOut()}><Icon name="logout" /> Sign out</button>
         </div>
       </header>
       <nav className="tabs" role="tablist">
-        {TABS.map(([id, label]) => (
-          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}>{label}</button>
+        {TABS.map(([id, label, icon]) => (
+          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}><Icon name={icon} /> {label}</button>
         ))}
       </nav>
-      {error && <div className="banner">{error}</div>}
+      {error && <div className="banner" role="alert"><Icon name="alert" /> {error}</div>}
       {loading ? (
         <p className="muted">Loading data…{slow && " This is taking longer than usual. Check your connection, then reload the page."}</p>
       ) : tab === "grades" ? (
@@ -189,11 +190,11 @@ export default function TeacherApp() {
       <main className="shell narrow">
         <div className="card">
           <h1>Can't check access</h1>
-          <p className="error" role="alert">{checkError}</p>
+          <p className="error" role="alert"><Icon name="alert" /> {checkError}</p>
           <p className="muted small">Check your internet connection, then try again.</p>
           <div className="row">
-            <button className="btn primary" onClick={() => setAttempt((n) => n + 1)}>Try again</button>
-            <button className="btn" onClick={() => getAuth().signOut()}>Sign out</button>
+            <button className="btn primary" onClick={() => setAttempt((n) => n + 1)}><Icon name="refresh" /> Try again</button>
+            <button className="btn" onClick={() => getAuth().signOut()}><Icon name="logout" /> Sign out</button>
           </div>
         </div>
       </main>
