@@ -43,7 +43,7 @@ export default function ImportTab({ db, meta, sections, roster }) {
   return (
     <>
       <div className="card">
-        <h2>Import class record (.xlsx)</h2>
+        <h2><Icon name="import" /> Import class record (.xlsx)</h2>
         <p className="muted">
           Reads every visible sheet of your class record. Scores in the file replace the scores in the database for the same students.
           Existing students keep their PINs; new students get a new PIN.
@@ -54,7 +54,7 @@ export default function ImportTab({ db, meta, sections, roster }) {
 
       {parsed && (
         <div className="card">
-          <h2>Ready to import: {fileName}</h2>
+          <h2><Icon name="check" /> Ready to import: {fileName}</h2>
           <div className="scroll">
           <table className="grid">
             <thead><tr><th>Section</th><th className="num">Students</th><th>Categories</th></tr></thead>
@@ -80,9 +80,9 @@ export default function ImportTab({ db, meta, sections, roster }) {
             </details>
           )}
           <div className="form-grid">
-            <label>Page title<input value={details.title} onChange={(e) => setDetails({ ...details, title: e.target.value })} /></label>
-            <label>Term<input value={details.term} onChange={(e) => setDetails({ ...details, term: e.target.value })} /></label>
-            <label className="span2">Note shown to students<input value={details.note} onChange={(e) => setDetails({ ...details, note: e.target.value })} /></label>
+            <label><Icon name="tag" /> Page title<input value={details.title} onChange={(e) => setDetails({ ...details, title: e.target.value })} /></label>
+            <label><Icon name="calendar" /> Term<input value={details.term} onChange={(e) => setDetails({ ...details, term: e.target.value })} /></label>
+            <label className="span2"><Icon name="note" /> Note shown to students<input value={details.note} onChange={(e) => setDetails({ ...details, note: e.target.value })} /></label>
           </div>
           <label className="inline"><input type="checkbox" checked={removeMissing} onChange={(e) => setRemoveMissing(e.target.checked)} /> Delete students that are in the database but not in this file</label>
           <p><button className="btn primary" onClick={run} disabled={busy}><Icon name="import" /> {busy ? "Importing… " + progress + "/" + parsed.students.length : "Import " + parsed.students.length + " students"}</button></p>

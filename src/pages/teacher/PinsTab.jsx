@@ -64,7 +64,7 @@ export default function PinsTab({ db, meta, sections, roster }) {
   return (
     <>
       <div className="row toolbar">
-        <label className="inline">Section
+        <label className="inline"><Icon name="users" /> Section
           <select value={activeId} onChange={(e) => setSecId(e.target.value)}>
             {secIds.map((id) => <option key={id} value={id}>{sections[id].name}</option>)}
           </select>

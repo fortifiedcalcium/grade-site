@@ -1,4 +1,5 @@
 import React, { Suspense, lazy } from "react";
+import Icon from "./Icon.jsx";
 import StudentPortal from "./pages/StudentPortal.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import { isConfigured } from "./supabase.js";
@@ -9,7 +10,7 @@ function NotConfigured() {
   return (
     <main className="shell narrow">
       <div className="card">
-        <h1>The database is not set up yet</h1>
+        <h1><Icon name="alert" size={22} /> The database is not set up yet</h1>
         <p>
           Copy <code>.env.example</code> to <code>.env</code> and fill in your Supabase project URL and anon key,
           then rebuild. See the README for the steps.

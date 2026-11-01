@@ -150,14 +150,14 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
   return (
     <>
       <div className="row toolbar">
-        <label className="inline">Section
+        <label className="inline"><Icon name="users" /> Section
           <select value={activeId} onChange={(e) => setSecId(e.target.value)}>
             {secIds.map((id) => <option key={id} value={id}>{sections[id].name}</option>)}
           </select>
         </label>
         <input className="search" placeholder="Search name or number" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="muted small">{rows.length === graded.length ? rows.length : rows.length + " of " + graded.length} students · changes save automatically and appear on students' screens when they refresh</span>
-        <label className="inline">Export as
+        <label className="inline"><Icon name="download" /> Export as
           <select value={format} onChange={(e) => setFormat(e.target.value)} aria-label="Export format">
             {FORMATS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
@@ -172,17 +172,17 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
         )}
       </div>
       <div className="row toolbar filters">
-        <label className="inline">Status
+        <label className="inline"><Icon name="info" /> Status
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             {STATUS_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
         </label>
-        <label className="inline">Sort
+        <label className="inline"><Icon name="sort" /> Sort
           <select value={sort} onChange={(e) => setSort(e.target.value)}>
             {SORT_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
         </label>
-        <label className="inline">View
+        <label className="inline"><Icon name="eye" /> View
           <select value={show} onChange={(e) => setShow(e.target.value)}>
             <option value="both">Students and statistics</option>
             <option value="students">Students only</option>
@@ -268,7 +268,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
       </div>
       {showStats && rows.length > 0 && (
         <section className="card flush" aria-label="Statistics by component">
-          <h2 className="card-title">Statistics</h2>
+          <h2 className="card-title"><Icon name="summary" /> Statistics</h2>
           <p className="muted small card-note">Points earned out of each component's weight, for the {rows.length} student{rows.length === 1 ? "" : "s"} shown. Blank scores are not counted. "Average scored by" is the student whose points are closest to the average.</p>
           <div className="scroll">
             <table className="grid">

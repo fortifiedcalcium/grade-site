@@ -50,7 +50,7 @@ export function GradeView({ data, onRefresh, onLogout, busy, initialTab = "summa
       {tab === "summary" && (
         <>
           <section className="card">
-            <h2>{record.name}</h2>
+            <h2><Icon name="user" size={20} /> {record.name}</h2>
             <dl className="facts">
               <div><dt>Student no.</dt><dd>{record.id}</dd></div>
               <div><dt>Section</dt><dd>{(section && section.name) || record.sec}</dd></div>
@@ -204,14 +204,14 @@ export default function StudentPortal() {
     <main className="shell narrow">
       <form className="card login" onSubmit={submit}>
         <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
-        <h1>Student Grade Portal</h1>
+        <h1><Icon name="scores" size={22} /> Student Grade Portal</h1>
         <p className="muted intro">Enter your student number and the PIN your instructor gave you.</p>
         <label>
-          Student number
+          <Icon name="user" /> Student number
           <input value={id} onChange={(e) => setId(e.target.value)} autoComplete="username" autoCapitalize="characters" inputMode="text" placeholder="e.g. 2026-00001" />
         </label>
         <label>
-          PIN
+          <Icon name="key" /> PIN
           <input value={pin} onChange={(e) => setPin(e.target.value)} type="password" autoComplete="current-password" placeholder="6-character PIN" />
         </label>
         {error && <p className="error" role="alert"><Icon name="alert" /> {error}</p>}

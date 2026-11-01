@@ -48,11 +48,11 @@ function SectionEditor({ db, id, section, roster }) {
     <details className="card">
       <summary><strong>{s.name}</strong></summary>
       <div className="form-grid">
-        <label>Subject code<input value={s.subject.code || ""} onChange={(e) => setS({ ...s, subject: { ...s.subject, code: e.target.value } })} /></label>
-        <label>Subject description<input value={s.subject.desc || ""} onChange={(e) => setS({ ...s, subject: { ...s.subject, desc: e.target.value } })} /></label>
-        <label>Instructor<input value={s.instructor || ""} onChange={(e) => setS({ ...s, instructor: e.target.value })} /></label>
-        <label>Room / time<input value={s.roomTime || ""} onChange={(e) => setS({ ...s, roomTime: e.target.value })} /></label>
-        <label>Passing equivalent (at or below)<input type="number" step="0.25" value={s.scheme.passEquiv} onChange={(e) => setS({ ...s, scheme: { ...s.scheme, passEquiv: Number(e.target.value) } })} /></label>
+        <label><Icon name="book" /> Subject code<input value={s.subject.code || ""} onChange={(e) => setS({ ...s, subject: { ...s.subject, code: e.target.value } })} /></label>
+        <label><Icon name="book" /> Subject description<input value={s.subject.desc || ""} onChange={(e) => setS({ ...s, subject: { ...s.subject, desc: e.target.value } })} /></label>
+        <label><Icon name="user" /> Instructor<input value={s.instructor || ""} onChange={(e) => setS({ ...s, instructor: e.target.value })} /></label>
+        <label><Icon name="clock" /> Room / time<input value={s.roomTime || ""} onChange={(e) => setS({ ...s, roomTime: e.target.value })} /></label>
+        <label><Icon name="check" /> Passing equivalent (at or below)<input type="number" step="0.25" value={s.scheme.passEquiv} onChange={(e) => setS({ ...s, scheme: { ...s.scheme, passEquiv: Number(e.target.value) } })} /></label>
         <label className="inline"><input type="checkbox" checked={!!s.scheme.holdFinal} onChange={(e) => setS({ ...s, scheme: { ...s.scheme, holdFinal: e.target.checked } })} /> Show "pending" until the final exam is recorded</label>
       </div>
       <div className="scroll">
@@ -109,15 +109,15 @@ export default function SettingsTab({ db, meta, sections, roster }) {
   return (
     <>
       <form className="card" onSubmit={save}>
-        <h2>Page details</h2>
+        <h2><Icon name="settings" /> Page details</h2>
         <div className="form-grid">
-          <label>Title<input value={m.title} onChange={(e) => setM({ ...m, title: e.target.value })} /></label>
-          <label>Term<input value={m.term} onChange={(e) => setM({ ...m, term: e.target.value })} /></label>
-          <label className="span2">Note shown to students<input value={m.note} onChange={(e) => setM({ ...m, note: e.target.value })} /></label>
+          <label><Icon name="tag" /> Title<input value={m.title} onChange={(e) => setM({ ...m, title: e.target.value })} /></label>
+          <label><Icon name="calendar" /> Term<input value={m.term} onChange={(e) => setM({ ...m, term: e.target.value })} /></label>
+          <label className="span2"><Icon name="note" /> Note shown to students<input value={m.note} onChange={(e) => setM({ ...m, note: e.target.value })} /></label>
         </div>
         <button className="btn primary"><Icon name="save" /> Save</button> {msg && <span className="small">{msg}</span>}
       </form>
-      <h2>Sections</h2>
+      <h2><Icon name="users" /> Sections</h2>
       <form className="card row" onSubmit={createSection}>
         <strong>Add a section</strong>
         <input aria-label="New section name" placeholder="Section name, e.g. BSIT 3-A" value={newName} onChange={(e) => setNewName(e.target.value)} />

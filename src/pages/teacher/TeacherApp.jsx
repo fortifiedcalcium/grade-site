@@ -50,15 +50,15 @@ function SignIn() {
     <main className="shell narrow">
       <form className="card login" onSubmit={submit}>
         <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
-        <h1>{register ? "Create instructor account" : "Instructor sign in"}</h1>
-        <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" /></label>
-        <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={register ? "new-password" : "current-password"} /></label>
-        {register && <label>Confirm password<input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" /></label>}
+        <h1><Icon name="user" size={22} /> {register ? "Create instructor account" : "Instructor sign in"}</h1>
+        <label><Icon name="mail" /> Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" /></label>
+        <label><Icon name="key" /> Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={register ? "new-password" : "current-password"} /></label>
+        {register && <label><Icon name="key" /> Confirm password<input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" /></label>}
         {notice && <p className="banner info" role="status"><Icon name="info" /> {notice}</p>}
         {error && <p className="error" role="alert"><Icon name="alert" /> {error}</p>}
         <button className="btn primary" disabled={busy}><Icon name="login" /> {busy ? (register ? "Creating…" : "Signing in…") : (register ? "Create account" : "Sign in")}</button>
         <p className="small center">
-          <a href="#" onClick={(e) => { e.preventDefault(); setRegister(!register); setError(""); setNotice(""); }}>{register ? "Have an account? Sign in" : "Need an account? Register"}</a>
+          <a href="#" onClick={(e) => { e.preventDefault(); setRegister(!register); setError(""); setNotice(""); }}><Icon name={register ? "login" : "plus"} /> {register ? "Have an account? Sign in" : "Need an account? Register"}</a>
           {" · "}<a href="/"><Icon name="back" /> Student view</a>
         </p>
       </form>
@@ -70,7 +70,7 @@ function NotAdmin({ user }) {
   return (
     <main className="shell narrow">
       <div className="card">
-        <h1>No access yet</h1>
+        <h1><Icon name="lock" size={22} /> No access yet</h1>
         <p>This account is signed in but is not marked as an instructor. In Supabase, open the SQL Editor and run:</p>
         <pre className="code">{`insert into public.admins (user_id)\nvalues ('${user.id}');`}</pre>
         <p className="muted small">Then reload this page.</p>
@@ -189,7 +189,7 @@ export default function TeacherApp() {
     return (
       <main className="shell narrow">
         <div className="card">
-          <h1>Can't check access</h1>
+          <h1><Icon name="alert" size={22} /> Can't check access</h1>
           <p className="error" role="alert"><Icon name="alert" /> {checkError}</p>
           <p className="muted small">Check your internet connection, then try again.</p>
           <div className="row">
