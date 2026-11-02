@@ -48,6 +48,8 @@ create table if not exists public.records (
   updated    timestamptz not null default now()
 );
 create index if not exists records_sec_idx on public.records (sec);
+-- When the student pressed "I acknowledge my grade". Cleared again whenever their scores change.
+alter table public.records add column if not exists acknowledged timestamptz;
 
 create table if not exists public.admins (
   user_id uuid primary key references auth.users (id) on delete cascade
@@ -94,8 +96,17 @@ create or replace function public.get_record(p_key text) returns jsonb
   language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
     'id', student_id, 'name', name, 'sec', sec, 's', s,
-    'updated', (extract(epoch from updated) * 1000)::bigint)
+    'updated', (extract(epoch from updated) * 1000)::bigint,
+    'ack', (extract(epoch from acknowledged) * 1000)::bigint)
   from public.records where key = p_key
+$$;
+
+-- A student marks their grade as acknowledged (needs the same secret key as get_record). Returns the time in ms,
+-- or null if the key matches no record. Pressing it again keeps the first time.
+create or replace function public.acknowledge_grade(p_key text) returns bigint
+  language sql security definer set search_path = public as $$
+  update public.records set acknowledged = coalesce(acknowledged, now()) where key = p_key
+  returning (extract(epoch from acknowledged) * 1000)::bigint
 $$;
 
 -- ---------------------------------------------------------------- instructor operations (all-or-nothing)
@@ -116,6 +127,7 @@ begin
      set s = case when p_value is null or jsonb_typeof(p_value) = 'null'
                   then s - p_item
                   else jsonb_set(s, array[p_item], p_value, true) end,
+         acknowledged = null,   -- the grade changed, so an earlier acknowledgment no longer applies
          updated = now()
    where key = p_key;
 end $$;
@@ -135,7 +147,8 @@ begin
     from jsonb_array_elements(p_rows) r
   on conflict (key) do update
     set student_id = excluded.student_id, name = excluded.name, sec = excluded.sec,
-        s = excluded.s, updated = now();
+        s = excluded.s, updated = now(),
+        acknowledged = case when public.records.s is distinct from excluded.s then null else public.records.acknowledged end;
 end $$;
 
 -- p_rows: [{ "id", "key" }]
@@ -174,11 +187,11 @@ begin
 end $$;
 
 revoke execute on function
-  public.get_record(text), public.is_admin(), public.require_admin(), public.set_score(text, text, jsonb),
+  public.get_record(text), public.acknowledge_grade(text), public.is_admin(), public.require_admin(), public.set_score(text, text, jsonb),
   public.upsert_students(jsonb), public.delete_students(jsonb), public.reset_pin(text, text, text, text),
   public.delete_section(text)
   from public, anon, authenticated;
-grant execute on function public.get_record(text) to anon, authenticated;
+grant execute on function public.get_record(text), public.acknowledge_grade(text) to anon, authenticated;
 grant execute on function public.is_admin() to authenticated;
 grant execute on function
   public.require_admin(), public.set_score(text, text, jsonb), public.upsert_students(jsonb),

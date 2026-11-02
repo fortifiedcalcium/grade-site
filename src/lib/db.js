@@ -65,6 +65,16 @@ export function createStudentApi(db) {
         })()
       ),
 
+    /* Marks the grade as acknowledged. Resolves to the time in ms; rejects if the key matches nothing. */
+    acknowledge: (key) =>
+      withTimeout(
+        (async () => {
+          const at = unwrap(await db.rpc("acknowledge_grade", { p_key: key }));
+          if (!at) throw Object.assign(new Error("no match"), { code: "nomatch" });
+          return at;
+        })()
+      ),
+
     refresh: (key) =>
       withTimeout(
         (async () => {
@@ -87,7 +97,7 @@ const SOURCES = {
   },
   records: {
     table: "records", pk: "key",
-    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.key, { id: r.student_id, name: r.name, sec: r.sec, s: r.s || {}, updated: ms(r.updated) }])),
+    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.key, { id: r.student_id, name: r.name, sec: r.sec, s: r.s || {}, updated: ms(r.updated), ack: ms(r.acknowledged) }])),
   },
 };
 

@@ -68,7 +68,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
       .filter(([id, r]) => !q || (id + " " + r.name).toLowerCase().includes(q.toLowerCase()))
       .map(([id, r]) => {
         const s = (records[r.key] && records[r.key].s) || {};
-        return { id, name: r.name, key: r.key, s, g: computeGrade(sec.scheme, s) };
+        return { id, name: r.name, key: r.key, s, ack: records[r.key] && records[r.key].ack, g: computeGrade(sec.scheme, s) };
       });
   }, [roster, records, activeId, q, sec]);
   const rows = useMemo(() => filterAndSort(graded, status, sort), [graded, status, sort]);
@@ -211,6 +211,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
                 <th rowSpan={2} className="stick l2">Name</th>
                 {cats.map((c) => <th key={c.id} colSpan={(c.items || []).length} className="grp">{c.title} ({fmtNum(c.weight)}%)</th>)}
                 {showFinal && <><th rowSpan={2} className="num">Final</th><th rowSpan={2} className="num">Eq.</th><th rowSpan={2}>Remarks</th></>}
+                <th rowSpan={2}>Posting</th>
                 <th rowSpan={2}><span className="sr-only">Delete</span></th>
               </tr>
               <tr>
@@ -238,11 +239,16 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
                         <td className={g.pending ? "muted" : g.remarks === "Passed" ? "ok" : "bad"}>{g.pending ? "Pending" : g.remarks}</td>
                       </>
                     )}
+                    <td>
+                      {r.ack
+                        ? <span className="ok" title={"Acknowledged " + new Date(r.ack).toLocaleString()}><Icon name="check" /> Ready for posting</span>
+                        : <span className="muted">Not yet acknowledged</span>}
+                    </td>
                     <td><button className="btn small danger" disabled={busy} aria-label={"Delete " + r.name} onClick={() => remove(r)}><Icon name="trash" /> Delete</button></td>
                   </tr>
                 );
               })}
-              {!rows.length && <tr><td colSpan={items.length + (showFinal ? 3 : 0) + 3} className="muted">No students found.</td></tr>}
+              {!rows.length && <tr><td colSpan={items.length + (showFinal ? 3 : 0) + 4} className="muted">No students found.</td></tr>}
             </tbody>
             {showStats && rows.length > 0 && (
               <tfoot>
@@ -258,6 +264,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
                         <td></td>
                       </>
                     )}
+                    <td></td>
                     <td></td>
                   </tr>
                 ))}

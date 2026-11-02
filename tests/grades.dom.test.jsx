@@ -12,7 +12,7 @@ const roster = {
   S2: { name: "Ben", sec: "a", pin: "222222", key: "k2" },
   S3: { name: "Cy", sec: "a", pin: "333333", key: "k3" },
 };
-const records = { k1: { s: { q1: 5 } }, k2: { s: { q1: 6 } }, k3: { s: {} } };
+const records = { k1: { s: { q1: 5 }, ack: 1700000000000 }, k2: { s: { q1: 6 } }, k3: { s: {} } };
 
 let calls;
 const db = { rpc: (name, args) => { calls.push([name, args]); return Promise.resolve({ data: null, error: null }); } };
@@ -63,5 +63,13 @@ describe("clear all scores", () => {
     expect(calls[0][1].p_rows).toHaveLength(3);
     expect(calls[0][1].p_rows.every((r) => JSON.stringify(r.s) === "{}")).toBe(true);
     expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/Clear ALL scores for the 3 students/));
+  });
+});
+
+describe("posting column", () => {
+  it("shows Ready for posting only for students who acknowledged", () => {
+    mount();
+    expect(screen.getAllByText(/ready for posting/i).filter((e) => e.tagName === "SPAN")).toHaveLength(1);
+    expect(screen.getAllByText(/not yet acknowledged/i)).toHaveLength(2);
   });
 });

@@ -65,6 +65,25 @@ describe("students (not signed in)", () => {
     expect((await pg.query("select public.get_record('nope') as r")).rows[0].r).toBeNull();
     expect(ok).not.toHaveProperty("pin");
   });
+  it("can acknowledge their own grade once, and a wrong key does nothing", async () => {
+    await as("anon");
+    expect((await pg.query("select public.get_record('key2') as r")).rows[0].r.ack).toBeNull();
+    const first = (await pg.query("select public.acknowledge_grade('key2') as t")).rows[0].t;
+    expect(Number(first)).toBeGreaterThan(0);
+    expect((await pg.query("select public.get_record('key2') as r")).rows[0].r.ack).toBe(first);
+    expect((await pg.query("select public.acknowledge_grade('key2') as t")).rows[0].t).toBe(first); // keeps the first time
+    expect((await pg.query("select public.acknowledge_grade('nope') as t")).rows[0].t).toBeNull();
+  });
+  it("loses the acknowledgment when an instructor changes a score or re-imports different scores", async () => {
+    await as("anon");
+    await pg.query("select public.acknowledge_grade('key1')");
+    await as("authenticated", ADMIN);
+    await pg.query("select public.upsert_students('[{\"id\":\"S1\",\"name\":\"Ana\",\"sec\":\"a\",\"pin\":\"111111\",\"key\":\"key1\",\"s\":{\"q1\":9}}]'::jsonb)");
+    expect((await pg.query("select acknowledged from public.records where key = 'key1'")).rows[0].acknowledged).not.toBeNull(); // same scores: kept
+    await pg.query("select public.set_score('key1', 'q1', '10')");
+    expect((await pg.query("select acknowledged from public.records where key = 'key1'")).rows[0].acknowledged).toBeNull();
+    await pg.query("select public.set_score('key1', 'q1', '9')"); // put it back for the tests below
+  });
   it("cannot write anything", async () => {
     await as("anon");
     await rejects(pg.query("update public.meta set title = 'x'"), /permission denied/);

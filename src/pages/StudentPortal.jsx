@@ -18,7 +18,7 @@ const TABS = [
 ];
 
 /* Same frame as the instructor page: header with the logo, tab bar, then cards and grid tables. */
-export function GradeView({ data, onRefresh, onLogout, busy, initialTab = "summary" }) {
+export function GradeView({ data, onRefresh, onLogout, onAcknowledge, busy, initialTab = "summary" }) {
   const { record, section, meta } = data;
   const [tab, setTab] = useState(initialTab);
   const view = useMemo(() => {
@@ -81,6 +81,19 @@ export function GradeView({ data, onRefresh, onLogout, busy, initialTab = "summa
                   </>
                 )}
               </section>
+
+              {!view.grade.pending && onAcknowledge && (
+                <section className="card ack">
+                  {record.ack ? (
+                    <p className="ok" role="status"><Icon name="check" /> You acknowledged your grade on {fmtDate(record.ack)}.</p>
+                  ) : (
+                    <>
+                      <p className="muted small">Press the button once you have reviewed your grade and agree with it. Your instructor will see that it is ready for posting.</p>
+                      <button type="button" className="btn primary" onClick={onAcknowledge} disabled={busy}><Icon name="check" /> I acknowledge my grade</button>
+                    </>
+                  )}
+                </section>
+              )}
 
               <section className="card flush">
                 <div className="scroll">
@@ -195,7 +208,7 @@ export default function StudentPortal() {
     return (
       <>
         {error && <div className="banner" role="alert"><Icon name="alert" /> {error}</div>}
-        <GradeView data={data} busy={busy} onRefresh={() => run(() => api.refresh(data.key))} onLogout={logout} />
+        <GradeView data={data} busy={busy} onRefresh={() => run(() => api.refresh(data.key))} onAcknowledge={() => run(async () => { await api.acknowledge(data.key); return api.refresh(data.key); })} onLogout={logout} />
       </>
     );
   }

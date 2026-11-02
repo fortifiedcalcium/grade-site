@@ -46,6 +46,12 @@ describe("student lookup", () => {
     expect(ok.meta.updated).toBe(Date.parse("2026-01-01T00:00:00Z"));
     await expect(api.login("2026-00001", "WRONG1")).rejects.toMatchObject({ code: "nomatch" });
   });
+  it("acknowledges a grade and rejects an unknown key", async () => {
+    const db = fakeClient({ tables: {}, rpc: { acknowledge_grade: ({ p_key }) => (p_key === "good" ? 1234 : null) } });
+    const api = createStudentApi(db);
+    await expect(api.acknowledge("good")).resolves.toBe(1234);
+    await expect(api.acknowledge("bad")).rejects.toMatchObject({ code: "nomatch" });
+  });
   it("says grades are not published when there is no salt yet", async () => {
     const db = fakeClient({ tables: { meta: [], sections: [] } });
     await expect(createStudentApi(db).login("1", "2")).rejects.toMatchObject({ code: "notpublished" });
@@ -58,7 +64,7 @@ describe("listen", () => {
     const seen = [];
     const stop = listen(db, "records", (v) => seen.push(v), () => {});
     await new Promise((r) => setTimeout(r, 0));
-    expect(seen.at(-1)).toEqual({ k1: { id: "S1", name: "Ana", sec: "a", s: { q1: 1 }, updated: null } });
+    expect(seen.at(-1)).toEqual({ k1: { id: "S1", name: "Ana", sec: "a", s: { q1: 1 }, updated: null, ack: null } });
     db.emit({ eventType: "UPDATE", new: { key: "k1", student_id: "S1", name: "Ana", sec: "a", s: { q1: 2 }, updated: null } });
     expect(seen.at(-1).k1.s).toEqual({ q1: 2 });
     db.emit({ eventType: "INSERT", new: { key: "k2", student_id: "S2", name: "Ben", sec: "a", s: {}, updated: null } });
