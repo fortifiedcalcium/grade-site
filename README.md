@@ -51,8 +51,31 @@ Before importing, you can check a workbook from the terminal:
 
 ## Sending PINs by email
 
-**Students & PINs > Mail merge file** downloads a file for a Google Sheet that emails each student their own PIN
-from your Gmail. Student emails are kept in your Sheet, not in the site. Setup steps: `mailmerge/README.md`.
+**Students & PINs > Email PINs** emails each student their own PIN from the site. Type each student's email in the
+**Email** column (or **Import emails (CSV)** with "Student no." and "Email" columns), write the message, press
+**Send a test to me**, then **Send PINs**. Students already emailed are skipped unless you untick the box; changing a
+student's email or resetting their PIN makes them "not emailed" again. Student emails are stored in the `roster`
+table, which only instructors can read.
+
+One-time setup by whoever runs the Supabase project (instructors need nothing else):
+
+1. Run `supabase/schema.sql` again (adds the email columns and functions; safe to repeat).
+2. Make a Gmail account for sending (for example `bulsucictgradeviewer@gmail.com`), turn on **2-Step Verification**
+   (https://myaccount.google.com/security), then create an **App Password** at https://myaccount.google.com/apppasswords
+   (name it "Grade portal"). Google shows a 16-letter password once.
+3. Deploy the function and give it the address and App Password:
+   ```
+   npx supabase login
+   npx supabase link --project-ref <your-project-ref>
+   npx supabase secrets set SMTP_USER=bulsucictgradeviewer@gmail.com SMTP_PASS="abcd efgh ijkl mnop"
+   npx supabase functions deploy send-pins
+   ```
+
+Gmail allows roughly 500 emails a day this way. If you own a domain you can use Resend instead: set `RESEND_API_KEY`
+and `MAIL_FROM` rather than the two SMTP secrets.
+
+Only accounts in `public.admins` can use the function. Replies go to the instructor's own address. The old Google
+Sheets mail merge (`mailmerge/README.md`) still works if you prefer to send from your own Gmail.
 
 ## How it protects grades
 

@@ -142,7 +142,7 @@ export function Dashboard({ user, initialTab = "grades" }) {
       ) : tab === "grades" ? (
         <GradesTab {...ctx} goImport={() => setTab("import")} />
       ) : tab === "pins" ? (
-        <PinsTab {...ctx} />
+        <PinsTab {...ctx} user={user} />
       ) : tab === "import" ? (
         <ImportTab {...ctx} />
       ) : (

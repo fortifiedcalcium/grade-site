@@ -100,6 +100,8 @@ describe("a signed-in user who is not an instructor", () => {
     expect((await pg.query("select * from public.admins")).rows).toHaveLength(0);
     await rejects(pg.query("insert into public.meta (id, title) values (2, 'x')"));
     await rejects(pg.query("select public.set_score('key1', 'q1', '10')"), /not allowed/);
+    await rejects(pg.query(`select public.set_student_emails('[{"id":"S1","email":"a@b.co"}]')`), /not allowed/);
+    await rejects(pg.query(`select public.mark_emailed('["S1"]')`), /not allowed/);
     await rejects(pg.query("select public.upsert_students('[{\"id\":\"S9\",\"name\":\"Z\",\"sec\":\"a\",\"pin\":\"1\",\"key\":\"k9\"}]')"), /not allowed/);
   });
   it("cannot make themselves an instructor", async () => {
@@ -142,6 +144,21 @@ describe("instructor", () => {
     await pg.query(`select public.delete_students('[{"id":"S3","key":"key3b"}]')`);
     expect((await pg.query("select 1 from public.roster where student_id = 'S3'")).rows).toHaveLength(0);
     expect((await pg.query("select 1 from public.records where key = 'key3b'")).rows).toHaveLength(0);
+  });
+  it("saves and clears student emails; changing one (or a PIN reset) makes the student 'not emailed' again", async () => {
+    await as("authenticated", ADMIN);
+    await pg.query(`select public.set_student_emails('[{"id":"S1","email":" ana@x.edu "}]')`);
+    await pg.query(`select public.mark_emailed('["S1"]')`);
+    let row = (await pg.query("select email, emailed from public.roster where student_id = 'S1'")).rows[0];
+    expect(row.email).toBe("ana@x.edu");
+    expect(row.emailed).toBeTruthy();
+    await pg.query(`select public.set_student_emails('[{"id":"S1","email":"ANA@x.edu"}]')`);   // same address: still emailed
+    expect((await pg.query("select emailed from public.roster where student_id = 'S1'")).rows[0].emailed).toBeTruthy();
+    await pg.query(`select public.set_student_emails('[{"id":"S1","email":"new@x.edu"}]')`);
+    expect((await pg.query("select emailed from public.roster where student_id = 'S1'")).rows[0].emailed).toBeNull();
+    await rejects(pg.query(`select public.set_student_emails('[{"id":"S1","email":"not an email"}]')`), /check/);
+    await pg.query(`select public.set_student_emails('[{"id":"S1","email":""}]')`);
+    expect((await pg.query("select email from public.roster where student_id = 'S1'")).rows[0].email).toBeNull();
   });
   it("re-importing replaces a student's scores", async () => {
     await as("authenticated", ADMIN);

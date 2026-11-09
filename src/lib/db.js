@@ -93,7 +93,7 @@ const SOURCES = {
   sections: { table: "sections", pk: "id", shape: (rows) => toSections([...rows.values()]) },
   roster: {
     table: "roster", pk: "student_id",
-    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.student_id, { name: r.name, sec: r.sec, pin: r.pin, key: r.key }])),
+    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.student_id, { name: r.name, sec: r.sec, pin: r.pin, key: r.key, email: r.email || "", emailed: ms(r.emailed) }])),
   },
   records: {
     table: "records", pk: "key",
@@ -269,6 +269,32 @@ export async function clearSectionScores(db, secId, roster) {
     .map(([id, r]) => ({ id, name: r.name, sec: r.sec, pin: r.pin, key: r.key, s: {} }));
   for (let i = 0; i < rows.length; i += 200) unwrap(await db.rpc("upsert_students", { p_rows: rows.slice(i, i + 200) }));
   return rows.length;
+}
+
+/* list: [{ id, email }]. An empty email clears it; changing an email makes the student "not emailed yet". */
+export async function saveEmails(db, list) {
+  for (let i = 0; i < list.length; i += 200) unwrap(await db.rpc("set_student_emails", { p_rows: list.slice(i, i + 200) }));
+  return list.length;
+}
+
+/* ids: student numbers whose PIN has already been emailed (for example by the old Gmail mail merge) */
+export async function markEmailed(db, ids) {
+  for (let i = 0; i < ids.length; i += 200) unwrap(await db.rpc("mark_emailed", { p_ids: ids.slice(i, i + 200) }));
+  return ids.length;
+}
+
+/* messages: [{ id, to, subject, text, html }], at most 25 per call. Sends through the send-pins Edge Function,
+   which checks that the caller is an instructor. Returns [{ id, ok, error? }]. With test = true nothing is
+   marked as emailed and the function adds [TEST] to the subject. */
+export async function sendPinEmails(db, messages, { sender, replyTo, test } = {}) {
+  const { data, error } = await db.functions.invoke("send-pins", { body: { messages, sender, replyTo, test: Boolean(test) } });
+  if (error) {
+    let detail = "";
+    try { detail = (await error.context.json()).error || ""; } catch { /* no body */ }
+    throw new Error(detail || error.message || "Could not reach the email service.");
+  }
+  if (data && data.error) throw new Error(data.error);
+  return (data && data.results) || [];
 }
 
 export async function resetPin(db, meta, id, entry) {

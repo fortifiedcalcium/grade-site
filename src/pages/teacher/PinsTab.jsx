@@ -1,17 +1,20 @@
 import React, { useMemo, useState } from "react";
 import Icon from "../../Icon.jsx";
-import { addStudent, removeStudent, removeStudents, resetPin } from "../../lib/db.js";
+import { addStudent, removeStudent, removeStudents, resetPin, saveEmails } from "../../lib/db.js";
 import { useSelection } from "../../lib/useSelection.js";
 import { csvCell, downloadText } from "../../lib/util.js";
 import { buildMailMergeRows, mailMergeCsv } from "../../lib/mailmerge.js";
+import { isValidEmail } from "../../lib/emailpins.js";
+import EmailPanel from "./EmailPanel.jsx";
 
-export default function PinsTab({ db, meta, sections, roster }) {
+export default function PinsTab({ db, meta, sections, roster, user }) {
   const secIds = Object.keys(sections);
   const [secId, setSecId] = useState("");
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [emailing, setEmailing] = useState(false);
   const [form, setForm] = useState({ id: "", name: "" });
   const activeId = sections[secId] ? secId : secIds[0] || "";
 
@@ -47,6 +50,13 @@ export default function PinsTab({ db, meta, sections, roster }) {
     });
   };
 
+  const changeEmail = (id, r, value) => {
+    const v = value.trim();
+    if (v === (r.email || "")) return;
+    if (v && !isValidEmail(v)) { setMsg("\"" + v + "\" is not a valid email address."); return; }
+    guard(async () => { await saveEmails(db, [{ id, email: v }]); });
+  };
+
   const exportCsv = () => {
     const lines = [["Student no.", "Name", "Section", "PIN"].join(",")];
     rows.forEach(([id, r]) => lines.push([id, r.name, sections[r.sec] ? sections[r.sec].name : r.sec, r.pin].map(csvCell).join(",")));
@@ -73,6 +83,7 @@ export default function PinsTab({ db, meta, sections, roster }) {
         <label className="inline"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show PINs</label>
         <button className="btn" onClick={exportCsv}><Icon name="download" /> Download PIN list</button>
         <button className="btn" onClick={() => window.print()}><Icon name="print" /> Print</button>
+        <button className="btn primary" onClick={() => setEmailing((x) => !x)}><Icon name="mail" /> Email PINs</button>
         <button className="btn" onClick={exportMailMerge} title="All sections, ready for the Gmail mail merge"><Icon name="mail" /> Mail merge file</button>
         {sel.selected.length > 0 && (
           <>
@@ -82,23 +93,26 @@ export default function PinsTab({ db, meta, sections, roster }) {
         )}
       </div>
       {msg && <div className="banner info" role="status"><Icon name="info" /> {msg}</div>}
+      {emailing && <EmailPanel db={db} user={user} roster={roster} sections={sections} activeId={activeId} selectedIds={sel.selected} onClose={() => setEmailing(false)} />}
       <div className="card flush">
         <div className="scroll tall">
           <table className="grid">
-            <thead><tr><th className="noprint"><input type="checkbox" aria-label="Select all students" checked={sel.allOn} onChange={(e) => sel.setAll(e.target.checked)} /></th><th>Student no.</th><th>Name</th><th>PIN</th><th className="noprint"></th></tr></thead>
+            <thead><tr><th className="noprint"><input type="checkbox" aria-label="Select all students" checked={sel.allOn} onChange={(e) => sel.setAll(e.target.checked)} /></th><th>Student no.</th><th>Name</th><th>Email</th><th>PIN</th><th className="noprint"></th></tr></thead>
             <tbody>
               {rows.map(([id, r]) => (
                 <tr key={id}>
                   <td className="noprint"><input type="checkbox" aria-label={"Select " + r.name} checked={sel.has(id)} onChange={() => sel.toggle(id)} /></td>
                   <td>{id}</td>
                   <td>{r.name}</td>
+                  <td className="noprint"><input type="email" aria-label={"Email of " + r.name} defaultValue={r.email || ""} key={id + (r.email || "")} placeholder="name@example.com" onBlur={(e) => changeEmail(id, r, e.target.value)} />
+                    {r.emailed ? <div className="muted small">PIN emailed {new Date(r.emailed).toLocaleDateString()}</div> : null}</td>
                   <td className="mono">{show ? r.pin : "••••••"}</td>
                   <td className="noprint right"><div className="actions">
                     <button className="btn small" disabled={busy} onClick={() => window.confirm("Make a new PIN for " + r.name + "? The old PIN will stop working.") && guard(async () => { const p = await resetPin(db, meta, id, r); setMsg("New PIN for " + id + ": " + p); })}><Icon name="key" /> Reset PIN</button>
                     <button className="btn small danger" disabled={busy} onClick={() => window.confirm("Delete " + r.name + " and all of their scores?") && guard(() => removeStudent(db, id, r.key))}><Icon name="trash" /> Delete</button></div></td>
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan={5} className="muted">No students.</td></tr>}
+              {!rows.length && <tr><td colSpan={6} className="muted">No students.</td></tr>}
             </tbody>
           </table>
         </div>

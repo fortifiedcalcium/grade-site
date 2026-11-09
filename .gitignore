@@ -9,3 +9,4 @@ dist
 supabase/seed.local.sql
 *.fb-export.json
 fb-export.json
+supabase/.temp/

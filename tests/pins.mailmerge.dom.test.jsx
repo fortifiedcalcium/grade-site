@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
 import PinsTab from "../src/pages/teacher/PinsTab.jsx";
 
 const sections = { a: { name: "BSIT 3-A" }, b: { name: "BSIT 3-B" } };
@@ -31,5 +31,26 @@ describe("Students & PINs: mail merge file", () => {
     expect(lines[1]).toBe(',S1,"AQUINO, ANA",Ana,BSIT 3-A,AAA111,' + window.location.origin + ",");
     expect(lines[2]).toContain("BSIT 3-B,BBB222");   // the other section is included too
     expect(screen.getByText(/pin-mail-merge\.csv with 2 students from all sections/)).toBeTruthy();
+  });
+});
+
+describe("Students & PINs: email PINs from the app", () => {
+  it("sends only students who have an email and passes the instructor's session to the function", async () => {
+    const invoke = vi.fn(async (name, { body }) => ({ data: { results: body.messages.map((m) => ({ id: m.id, ok: true })) }, error: null }));
+    const rpc = vi.fn();
+    window.confirm = vi.fn(() => true);
+    const r = { ...roster, S1: { ...roster.S1, email: "ana@x.edu" } };
+    render(<PinsTab db={{ rpc, functions: { invoke } }} user={{ email: "teacher@x.edu" }} meta={{ salt: "x" }} sections={sections} roster={r} />);
+    fireEvent.click(screen.getByRole("button", { name: /^email pins$/i }));
+    expect(screen.getByText(/ready to send/).textContent).toContain("1");
+    fireEvent.click(screen.getByRole("button", { name: /send pins \(1\)/i }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
+    expect(invoke.mock.calls[0][0]).toBe("send-pins");
+    const body = invoke.mock.calls[0][1].body;
+    expect(body.messages).toHaveLength(1);
+    expect(body.messages[0]).toMatchObject({ id: "S1", to: "ana@x.edu" });
+    expect(body.messages[0].text).toContain("AAA111");
+    expect(body.test).toBe(false);
+    await waitFor(() => expect(screen.getByText(/Sent 1 email/)).toBeTruthy());
   });
 });

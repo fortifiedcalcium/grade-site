@@ -30,6 +30,10 @@ create table if not exists public.roster (
   key        text not null unique                      -- hash of salt + student number + PIN
 );
 
+-- student email (for sending PINs from the app) and when the PIN email last went out; instructors only
+alter table public.roster add column if not exists email   text check (email is null or (char_length(email) <= 254 and email ~ '^[^[:space:]@,;<>]+@[^[:space:]@,;<>]+\.[^[:space:]@,;<>]+$'));
+alter table public.roster add column if not exists emailed timestamptz;
+
 create or replace function public.valid_scores(s jsonb) returns boolean
   language sql immutable as $$
   select jsonb_typeof(s) = 'object' and not exists (
@@ -170,7 +174,28 @@ begin
     insert into public.records (key, student_id, name, sec)
       select p_new_key, student_id, name, sec from public.roster where student_id = p_id;
   end if;
-  update public.roster set pin = p_pin, key = p_new_key where student_id = p_id;
+  update public.roster set pin = p_pin, key = p_new_key, emailed = null where student_id = p_id;
+end $$;
+
+-- p_rows: [{ "id", "email" }]; an empty or null email clears it. Other columns are untouched.
+create or replace function public.set_student_emails(p_rows jsonb) returns void
+  language plpgsql as $$
+begin
+  perform public.require_admin();
+  update public.roster ro
+     set email = nullif(btrim(r ->> 'email'), ''),
+         emailed = case when lower(coalesce(nullif(btrim(r ->> 'email'), ''), '')) = lower(coalesce(ro.email, '')) then ro.emailed else null end
+    from jsonb_array_elements(p_rows) r
+   where ro.student_id = r ->> 'id';
+end $$;
+
+-- p_ids: ["student number", ...]; called after the PIN email was sent
+create or replace function public.mark_emailed(p_ids jsonb) returns void
+  language plpgsql as $$
+begin
+  perform public.require_admin();
+  update public.roster set emailed = now()
+   where student_id in (select jsonb_array_elements_text(p_ids));
 end $$;
 
 -- Deletes a section together with its students and their scores. Returns how many students were removed.
@@ -189,13 +214,14 @@ end $$;
 revoke execute on function
   public.get_record(text), public.acknowledge_grade(text), public.is_admin(), public.require_admin(), public.set_score(text, text, jsonb),
   public.upsert_students(jsonb), public.delete_students(jsonb), public.reset_pin(text, text, text, text),
-  public.delete_section(text)
+  public.delete_section(text), public.set_student_emails(jsonb), public.mark_emailed(jsonb)
   from public, anon, authenticated;
 grant execute on function public.get_record(text), public.acknowledge_grade(text) to anon, authenticated;
 grant execute on function public.is_admin() to authenticated;
 grant execute on function
   public.require_admin(), public.set_score(text, text, jsonb), public.upsert_students(jsonb),
-  public.delete_students(jsonb), public.reset_pin(text, text, text, text), public.delete_section(text)
+  public.delete_students(jsonb), public.reset_pin(text, text, text, text), public.delete_section(text),
+  public.set_student_emails(jsonb), public.mark_emailed(jsonb)
   to authenticated;
 
 -- ---------------------------------------------------------------- live updates for the instructor screens
