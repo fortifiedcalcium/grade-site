@@ -49,6 +49,15 @@ The keys are read when the site is built, so run `npm run deploy` from a machine
 Before importing, you can check a workbook from the terminal:
 `npm run check-workbook -- "Class Record.xlsx"`
 
+## A student in more than one section
+
+The same student number can be in several sections (one sheet each when importing, or **Add** in each section).
+The student keeps one PIN, signs in once, and a **Section** menu switches between their sections. Behind the scenes
+the first section uses the plain student number as its row id and later sections use `<number>@<section id>`;
+screens and exports always show the plain number. Re-importing a student that moved to another section adds the new
+section; tick "remove students missing from the file" to drop the old one. Run `supabase/schema.sql` before deploying:
+student sign-in now uses the new `get_records` function.
+
 ## Sending PINs by email
 
 **Students & PINs > Email PINs** emails each student their own PIN from the site. Type each student's email in the

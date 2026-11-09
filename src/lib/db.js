@@ -12,7 +12,7 @@
    The screens work with plain objects shaped like this (maps keyed by id), so each table's rows are
    converted on the way in. Times are milliseconds since 1970. */
 
-import { recordKey, makePin, makeSalt, safeId, normId } from "./keys.js";
+import { recordKey, makePin, makeSalt, safeId, normId, studentNo, taggedRowId } from "./keys.js";
 import { DEFAULT_SCALE, DEFAULT_SCALE_NOTE } from "./grading.js";
 
 const clean = (obj) => JSON.parse(JSON.stringify(obj)); // drops undefined
@@ -54,14 +54,20 @@ export function createStudentApi(db) {
   return {
     loadMeta: () => withTimeout(fetchPublic().then((x) => x.meta)),
 
+    /* A student can be in several sections, each with its own record: try the plain student number and the
+       section-tagged one for every section, and return every record that matches (the first is shown). */
     login: (idInput, pinInput) =>
       withTimeout(
         (async () => {
           const { meta, sections } = await fetchPublic();
           if (!meta || !meta.salt) throw Object.assign(new Error("not published"), { code: "notpublished" });
-          const key = await recordKey(meta.salt, idInput, pinInput);
-          const record = await fetchRecord(key);
-          return { key, meta, record, section: sections[record.sec] || null };
+          const no = normId(idInput);
+          const ids = [no, ...Object.keys(sections).map((secId) => taggedRowId(no, secId))];
+          const keys = await Promise.all(ids.map((id) => recordKey(meta.salt, id, pinInput)));
+          const found = unwrap(await db.rpc("get_records", { p_keys: keys })) || [];
+          if (!found.length) throw Object.assign(new Error("no match"), { code: "nomatch" });
+          const entries = found.map((rec) => ({ key: rec.key, record: rec, section: sections[rec.sec] || null }));
+          return { ...entries[0], meta, others: entries };
         })()
       ),
 
@@ -242,14 +248,27 @@ export async function deleteSection(db, id) {
 export const newItemKey = (catId) => catId + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 export const newCategoryId = (title) => (slugId(title) || "cat") + "_" + Date.now().toString(36);
 
-export async function addStudent(db, meta, { id, name, sec }) {
-  const sid = safeId(id);
-  if (!sid || !name.trim()) throw new Error("Enter a student number and a name.");
+/* Which roster row a student number in a section uses. The same student in a second section gets a tagged row
+   (see keys.js) and keeps the PIN they already have. rowsTaken: ids already used earlier in the same import. */
+export function resolveRow(roster, no, sec, rowsTaken) {
+  const n = safeId(no);
+  const same = Object.entries(roster || {}).find(([id, r]) => studentNo(id) === n && r.sec === sec);
+  if (same) return { id: same[0], existing: same[1] };
+  const sibling = Object.entries(roster || {}).find(([id]) => studentNo(id) === n);
+  const id = (rowsTaken && rowsTaken.has(n)) || sibling ? taggedRowId(n, sec) : n;
+  return { id, existing: null, pin: sibling ? sibling[1].pin : null };
+}
+
+export async function addStudent(db, meta, { id, name, sec }, roster) {
+  const no = safeId(id);
+  if (!no || !name.trim()) throw new Error("Enter a student number and a name.");
+  const row = resolveRow(roster, no, sec);
+  if (row.existing) throw new Error("Student " + no + " is already in this section.");
   const salt = await ensureSalt(db, meta);
-  const pin = makePin();
-  const key = await recordKey(salt, sid, pin);
-  unwrap(await db.rpc("upsert_students", { p_rows: [{ id: sid, name: name.trim(), sec, pin, key }] }));
-  return { id: sid, pin };
+  const pin = row.pin || makePin();
+  const key = await recordKey(salt, row.id, pin);
+  unwrap(await db.rpc("upsert_students", { p_rows: [{ id: row.id, name: name.trim(), sec, pin, key }] }));
+  return { id: row.id, no, pin };
 }
 
 export async function removeStudent(db, id, key) {
@@ -323,21 +342,25 @@ export async function importData(db, parsed, { meta, sections, roster, details, 
   let created = 0, kept = 0;
   const seen = new Set();
   const rows = [];
+  const live = { ...rosterNow };   // roster plus the rows made so far in this import
+  const takenNo = new Set();       // student numbers already placed in this import (the next section's row is tagged)
   for (let i = 0; i < parsed.students.length; i++) {
     const st = parsed.students[i];
-    seen.add(st.id);
-    const ex = rosterNow[st.id];
+    const r = resolveRow(live, st.id, st.sec, takenNo);
     let pin, key;
-    if (ex && ex.key && ex.pin) {
-      pin = ex.pin;
-      key = ex.key;
+    if (r.existing && r.existing.key && r.existing.pin) {
+      pin = r.existing.pin;
+      key = r.existing.key;
       kept++;
     } else {
-      pin = makePin();
-      key = await recordKey(salt, st.id, pin);
+      pin = r.pin || makePin();
+      key = await recordKey(salt, r.id, pin);
       created++;
     }
-    rows.push(clean({ id: st.id, name: st.name, sec: st.sec, pin, key, s: st.s || {} }));
+    seen.add(r.id);
+    takenNo.add(safeId(st.id));
+    live[r.id] = { name: st.name, sec: st.sec, pin, key };
+    rows.push(clean({ id: r.id, name: st.name, sec: st.sec, pin, key, s: st.s || {} }));
     if (onProgress) onProgress(i + 1, parsed.students.length);
   }
 

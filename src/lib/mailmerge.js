@@ -1,4 +1,5 @@
 import { csvCell } from "./util.js";
+import { studentNo } from "./keys.js";
 
 /* The file that feeds the Gmail mail merge (see mailmerge/README.md): one row per student with the PIN,
    the sign-in link and an empty Email column to fill in. Student emails are deliberately not kept in the
@@ -22,7 +23,7 @@ export function buildMailMergeRows(roster, sections, link) {
   return Object.entries(roster)
     .map(([id, r]) => ({ id, r, sec: secName(r.sec) }))
     .sort((a, b) => a.sec.localeCompare(b.sec) || a.r.name.localeCompare(b.r.name))
-    .map(({ id, r, sec }) => ["", id, r.name, firstName(r.name), sec, r.pin, link, ""]);
+    .map(({ id, r, sec }) => ["", studentNo(id), r.name, firstName(r.name), sec, r.pin, link, ""]);
 }
 
 // the byte order mark keeps names with accents (Ñ) intact when the file is opened in Google Sheets or Excel

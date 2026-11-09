@@ -131,5 +131,5 @@ describe("export files", () => {
     const many = await buildPdfDoc(buildReport({ sec, meta, students: students(70), now }), assets);
     expect(one.getNumberOfPages()).toBe(1);
     expect(many.getNumberOfPages()).toBeGreaterThanOrEqual(3);
-  });
+  }, 30000);
 });

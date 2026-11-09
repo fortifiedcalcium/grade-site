@@ -13,6 +13,12 @@ export const normPin = normId;
 /* Student numbers are reduced to a safe set of characters (the keys were made this way, so it must not change) */
 export const safeId = (id) => normId(id).replace(/[.$#[\]/]/g, "-");
 
+/* A student can be in several sections. The first section keeps the plain student number as its row id; every
+   other section gets "<number>@<section id>", so each row (and each record key) stays unique. Everything the
+   person sees uses studentNo(). */
+export const studentNo = (rowId) => String(rowId == null ? "" : rowId).split("@")[0];
+export const taggedRowId = (no, secId) => safeId(no) + "@" + secId;
+
 const hex = (buf) => Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
 
 export function makePin(len = 6) {

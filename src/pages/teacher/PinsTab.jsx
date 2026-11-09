@@ -5,6 +5,7 @@ import { useSelection } from "../../lib/useSelection.js";
 import { csvCell, downloadText } from "../../lib/util.js";
 import { buildMailMergeRows, mailMergeCsv } from "../../lib/mailmerge.js";
 import { isValidEmail, parseEmailCsv } from "../../lib/emailpins.js";
+import { studentNo, safeId } from "../../lib/keys.js";
 import EmailPanel from "./EmailPanel.jsx";
 
 export default function PinsTab({ db, meta, sections, roster, user }) {
@@ -45,9 +46,9 @@ export default function PinsTab({ db, meta, sections, roster, user }) {
   const add = (e) => {
     e.preventDefault();
     guard(async () => {
-      const r = await addStudent(db, meta, { id: form.id, name: form.name, sec: activeId });
+      const r = await addStudent(db, meta, { id: form.id, name: form.name, sec: activeId }, roster);
       setForm({ id: "", name: "" });
-      setMsg("Added " + r.id + ". PIN: " + r.pin);
+      setMsg("Added " + r.no + ". PIN: " + r.pin);
     });
   };
 
@@ -65,8 +66,10 @@ export default function PinsTab({ db, meta, sections, roster, user }) {
     if (!file) return;
     guard(async () => {
       const rows = parseEmailCsv(await file.text());
-      const good = rows.filter((r) => roster[r.id] && isValidEmail(r.email));
-      const bad = rows.length - good.length;
+      // a student in several sections has one roster row per section; the email applies to all of them
+      const rowIds = (no) => Object.keys(roster).filter((id) => studentNo(id) === safeId(no));
+      const good = rows.filter((r) => rowIds(r.id).length && isValidEmail(r.email)).flatMap((r) => rowIds(r.id).map((id) => ({ ...r, id })));
+      const bad = rows.length - rows.filter((r) => rowIds(r.id).length && isValidEmail(r.email)).length;
       if (!good.length) throw new Error("No usable rows. The file needs a 'Student no.' column and an 'Email' column.");
       await saveEmails(db, good.map((r) => ({ id: r.id, email: r.email })));
       const sent = good.filter((r) => r.sent).map((r) => r.id);
@@ -77,7 +80,7 @@ export default function PinsTab({ db, meta, sections, roster, user }) {
 
   const exportCsv = () => {
     const lines = [["Student no.", "Name", "Section", "PIN"].join(",")];
-    rows.forEach(([id, r]) => lines.push([id, r.name, sections[r.sec] ? sections[r.sec].name : r.sec, r.pin].map(csvCell).join(",")));
+    rows.forEach(([id, r]) => lines.push([studentNo(id), r.name, sections[r.sec] ? sections[r.sec].name : r.sec, r.pin].map(csvCell).join(",")));
     downloadText("pins-" + (sections[activeId] ? sections[activeId].name : "section") + ".csv", lines.join("\n"));
   };
 
@@ -122,13 +125,13 @@ export default function PinsTab({ db, meta, sections, roster, user }) {
               {rows.map(([id, r]) => (
                 <tr key={id}>
                   <td className="noprint"><input type="checkbox" aria-label={"Select " + r.name} checked={sel.has(id)} onChange={() => sel.toggle(id)} /></td>
-                  <td>{id}</td>
+                  <td>{studentNo(id)}</td>
                   <td>{r.name}</td>
                   <td className="noprint"><input type="email" aria-label={"Email of " + r.name} defaultValue={r.email || ""} key={id + (r.email || "")} placeholder="name@example.com" onBlur={(e) => changeEmail(id, r, e.target.value)} />
                     {r.emailed ? <div className="muted small">PIN emailed {new Date(r.emailed).toLocaleDateString()}</div> : null}</td>
                   <td className="mono">{show ? r.pin : "••••••"}</td>
                   <td className="noprint right"><div className="actions">
-                    <button className="btn small" disabled={busy} onClick={() => window.confirm("Make a new PIN for " + r.name + "? The old PIN will stop working.") && guard(async () => { const p = await resetPin(db, meta, id, r); setMsg("New PIN for " + id + ": " + p); })}><Icon name="key" /> Reset PIN</button>
+                    <button className="btn small" disabled={busy} onClick={() => window.confirm("Make a new PIN for " + r.name + "? The old PIN will stop working.") && guard(async () => { const p = await resetPin(db, meta, id, r); setMsg("New PIN for " + studentNo(id) + ": " + p); })}><Icon name="key" /> Reset PIN</button>
                     <button className="btn small danger" disabled={busy} onClick={() => window.confirm("Delete " + r.name + " and all of their scores?") && guard(() => removeStudent(db, id, r.key))}><Icon name="trash" /> Delete</button></div></td>
                 </tr>
               ))}

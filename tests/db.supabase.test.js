@@ -37,7 +37,7 @@ describe("student lookup", () => {
         meta: [{ id: 1, title: "T", term: "Term", note: "", salt: "salt", updated: "2026-01-01T00:00:00Z" }],
         sections: [{ id: "a", data: { name: "Section A" } }],
       },
-      rpc: { get_record: ({ p_key }) => (p_key === key ? { id: "2026-00001", name: "Ana", sec: "a", s: { q1: 9 }, updated: 1 } : null) },
+      rpc: { get_records: ({ p_keys }) => (p_keys.includes(key) ? [{ key, id: "2026-00001", name: "Ana", sec: "a", s: { q1: 9 }, updated: 1 }] : []) },
     });
     const api = createStudentApi(db);
     const ok = await api.login("2026-00001", "abc234");

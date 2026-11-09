@@ -4,6 +4,7 @@ import { getDb } from "../supabase.js";
 import { createStudentApi } from "../lib/db.js";
 import { computeGrade, hasValue, isNum, usableScale } from "../lib/grading.js";
 import { fmt2, fmtNum, fmtDate } from "../lib/util.js";
+import { studentNo } from "../lib/keys.js";
 
 const ERRORS = {
   nomatch: "We couldn't find a record with that student number and PIN. Check both and try again.",
@@ -18,7 +19,7 @@ const TABS = [
 ];
 
 /* Same frame as the instructor page: header with the logo, tab bar, then cards and grid tables. */
-export function GradeView({ data, onRefresh, onLogout, onAcknowledge, busy, initialTab = "summary" }) {
+export function GradeView({ data, onRefresh, onLogout, onAcknowledge, onSwitch = () => {}, busy, initialTab = "summary" }) {
   const { record, section, meta } = data;
   const [tab, setTab] = useState(initialTab);
   const view = useMemo(() => {
@@ -33,10 +34,17 @@ export function GradeView({ data, onRefresh, onLogout, onAcknowledge, busy, init
           <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
           <div>
             <h1>{meta.title || "Student Grade Portal"}</h1>
-            <p className="muted small">{[record.name, record.id].filter(Boolean).join(" · ")}{meta.term ? " · " + meta.term : ""}</p>
+            <p className="muted small">{[record.name, studentNo(record.id)].filter(Boolean).join(" · ")}{meta.term ? " · " + meta.term : ""}</p>
           </div>
         </div>
         <div className="row">
+          {data.others && data.others.length > 1 && (
+            <label className="inline">Section
+              <select value={data.key} disabled={busy} onChange={(e) => onSwitch(e.target.value)} aria-label="Section">
+                {data.others.map((o) => <option key={o.key} value={o.key}>{(o.section && o.section.name) || o.record.sec}</option>)}
+              </select>
+            </label>
+          )}
           <button className="btn ghost" onClick={onRefresh} disabled={busy}><Icon name="refresh" /> {busy ? "Refreshing…" : "Refresh"}</button>
           <button className="btn ghost" onClick={onLogout}><Icon name="logout" /> Sign out</button>
         </div>
@@ -52,7 +60,7 @@ export function GradeView({ data, onRefresh, onLogout, onAcknowledge, busy, init
           <section className="card">
             <h2><Icon name="user" size={20} /> {record.name}</h2>
             <dl className="facts">
-              <div><dt>Student no.</dt><dd>{record.id}</dd></div>
+              <div><dt>Student no.</dt><dd>{studentNo(record.id)}</dd></div>
               <div><dt>Section</dt><dd>{(section && section.name) || record.sec}</dd></div>
               {section && section.subject && (section.subject.code || section.subject.desc) && (
                 <div><dt>Subject</dt><dd>{[section.subject.code, section.subject.desc].filter(Boolean).join(" – ")}</dd></div>
@@ -198,6 +206,9 @@ export default function StudentPortal() {
     run(() => api.login(id, pin));
   };
 
+  // a student in several sections: keep the list for the switcher, and refresh this section's entry in it
+  const keepOthers = (next) => ({ ...next, others: ((data && data.others) || []).map((o) => (o.key === next.key ? { ...o, record: next.record, section: next.section } : o)) });
+
   const logout = () => {
     setData(null);
     setPin("");
@@ -208,7 +219,11 @@ export default function StudentPortal() {
     return (
       <>
         {error && <div className="banner" role="alert"><Icon name="alert" /> {error}</div>}
-        <GradeView data={data} busy={busy} onRefresh={() => run(() => api.refresh(data.key))} onAcknowledge={() => run(async () => { await api.acknowledge(data.key); return api.refresh(data.key); })} onLogout={logout} />
+        <GradeView data={data} busy={busy}
+          onRefresh={() => run(async () => keepOthers(await api.refresh(data.key)))}
+          onSwitch={(key) => run(async () => keepOthers(await api.refresh(key)))}
+          onAcknowledge={() => run(async () => { await api.acknowledge(data.key); return keepOthers(await api.refresh(data.key)); })}
+          onLogout={logout} />
       </>
     );
   }

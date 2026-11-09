@@ -1,4 +1,5 @@
 import { firstName } from "./mailmerge.js";
+import { studentNo } from "./keys.js";
 
 /* Emailing PINs from the app (the Edge Function in supabase/functions/send-pins does the sending).
    Everything here is plain functions so it can be tested without a browser or a mail provider. */
@@ -27,7 +28,7 @@ export const isValidEmail = (s) => /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test
 /* the stored email, or the pattern with {id} = student number in lowercase ("{id}@school.edu.ph") */
 export function emailFor(email, studentId, pattern) {
   if (isValidEmail(email)) return String(email).trim();
-  const id = String(studentId || "").trim().toLowerCase();
+  const id = studentNo(String(studentId || "").trim()).toLowerCase();
   if (pattern && id) {
     const built = String(pattern).replace(/\{id\}/gi, id);
     if (isValidEmail(built)) return built;
@@ -40,7 +41,7 @@ const TOKEN = /\{\{\s*([^{}]+?)\s*\}\}/g;
 
 export function valuesFor(id, r, sections, link) {
   const sec = (sections && sections[r.sec] && sections[r.sec].name) || r.sec;
-  return { "first name": firstName(r.name), name: r.name, "student no.": id, section: sec, pin: r.pin, link };
+  return { "first name": firstName(r.name), name: r.name, "student no.": studentNo(id), section: sec, pin: r.pin, link };
 }
 
 export const unknownPlaceholders = (text, values) =>

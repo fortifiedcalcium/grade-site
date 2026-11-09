@@ -84,6 +84,13 @@ describe("students (not signed in)", () => {
     expect((await pg.query("select acknowledged from public.records where key = 'key1'")).rows[0].acknowledged).toBeNull();
     await pg.query("select public.set_score('key1', 'q1', '9')"); // put it back for the tests below
   });
+  it("get_records returns only the records whose keys match and cannot list the rest", async () => {
+    await as("anon");
+    const rows = (await pg.query("select public.get_records(array['key1','nope','key2']) as r")).rows[0].r;
+    expect(rows.map((r) => r.id)).toEqual(["S1", "S2"]);
+    expect((await pg.query("select public.get_records(array['nope']) as r")).rows[0].r).toEqual([]);
+    expect((await pg.query("select public.get_records(array[]::text[]) as r")).rows[0].r).toEqual([]);
+  });
   it("cannot write anything", async () => {
     await as("anon");
     await rejects(pg.query("update public.meta set title = 'x'"), /permission denied/);

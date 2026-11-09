@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import Icon from "../../Icon.jsx";
 import { computeGrade, isNum } from "../../lib/grading.js";
+import { studentNo } from "../../lib/keys.js";
 import { addStudent, clearSectionScores, removeStudent, removeStudents, saveScore } from "../../lib/db.js";
 import { useSelection } from "../../lib/useSelection.js";
 import { buildStats, filterAndSort, namesText, SORT_OPTIONS, STATUS_OPTIONS } from "../../lib/stats.js";
@@ -92,9 +93,9 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
   const add = (e) => {
     e.preventDefault();
     guard(async () => {
-      const r = await addStudent(db, meta, { id: form.id, name: form.name, sec: activeId });
+      const r = await addStudent(db, meta, { id: form.id, name: form.name, sec: activeId }, roster);
       setForm({ id: "", name: "" });
-      setMsg("Added " + r.id + ". PIN: " + r.pin + " (also under Students & PINs)");
+      setMsg("Added " + r.no + ". PIN: " + r.pin + " (also under Students & PINs)");
     });
   };
   const removeSelected = () => {
@@ -134,7 +135,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
     setExporting(true);
     setMsg("");
     try {
-      const report = buildReport({ sec, meta, students: rows.map((r) => ({ id: r.id, name: r.name, s: r.s })), view: { hiddenCats, showFinal, show, filterNote } });
+      const report = buildReport({ sec, meta, students: rows.map((r) => ({ id: studentNo(r.id), name: r.name, s: r.s })), view: { hiddenCats, showFinal, show, filterNote } });
       const assets = format === "csv" ? null : await loadAssets();
       const { blob, filename } = await makeReportFile(format, report, assets);
       downloadBlob(blob, filename);
@@ -224,7 +225,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
                 return (
                   <tr key={r.id}>
                     <td className="stick l1">
-                      <label className="inline"><input type="checkbox" aria-label={"Select " + r.name} checked={sel.has(r.id)} onChange={() => sel.toggle(r.id)} /> {r.id}</label>
+                      <label className="inline"><input type="checkbox" aria-label={"Select " + r.name} checked={sel.has(r.id)} onChange={() => sel.toggle(r.id)} /> {studentNo(r.id)}</label>
                     </td>
                     <td className="stick l2">{r.name}</td>
                     {items.map((i) => (

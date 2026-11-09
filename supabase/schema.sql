@@ -113,6 +113,17 @@ create or replace function public.acknowledge_grade(p_key text) returns bigint
   returning (extract(epoch from acknowledged) * 1000)::bigint
 $$;
 
+-- Same as get_record for several keys at once (a student in more than one section has one record per section).
+-- Returns only the records whose key matches; at most 50 keys per call, and nothing can be listed.
+create or replace function public.get_records(p_keys text[]) returns jsonb
+  language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'key', key, 'id', student_id, 'name', name, 'sec', sec, 's', s,
+    'ack', (extract(epoch from acknowledged) * 1000)::bigint,
+    'updated', (extract(epoch from updated) * 1000)::bigint) order by name, sec), '[]'::jsonb)
+  from public.records where key = any (p_keys[1:50])
+$$;
+
 -- ---------------------------------------------------------------- instructor operations (all-or-nothing)
 create or replace function public.require_admin() returns void
   language plpgsql stable as $$
@@ -212,11 +223,11 @@ begin
 end $$;
 
 revoke execute on function
-  public.get_record(text), public.acknowledge_grade(text), public.is_admin(), public.require_admin(), public.set_score(text, text, jsonb),
+  public.get_record(text), public.get_records(text[]), public.acknowledge_grade(text), public.is_admin(), public.require_admin(), public.set_score(text, text, jsonb),
   public.upsert_students(jsonb), public.delete_students(jsonb), public.reset_pin(text, text, text, text),
   public.delete_section(text), public.set_student_emails(jsonb), public.mark_emailed(jsonb)
   from public, anon, authenticated;
-grant execute on function public.get_record(text), public.acknowledge_grade(text) to anon, authenticated;
+grant execute on function public.get_record(text), public.get_records(text[]), public.acknowledge_grade(text) to anon, authenticated;
 grant execute on function public.is_admin() to authenticated;
 grant execute on function
   public.require_admin(), public.set_score(text, text, jsonb), public.upsert_students(jsonb),

@@ -275,8 +275,9 @@ export function parseClassRecord(sheets) {
     let count = 0;
     parsed.rows.forEach((r) => {
       const sid = safeId(r.id);
-      if (seen.has(sid)) { out.errors.push("Student number " + r.id + " appears in both " + seen.get(sid) + " and " + sh.name + "."); return; }
-      seen.set(sid, sh.name);
+      // the same student may be in several sections (one sheet each), but not twice in one sheet
+      if (seen.has(sid + "|" + id)) { out.errors.push("Student number " + r.id + " appears twice in " + sh.name + "."); return; }
+      seen.set(sid + "|" + id, sh.name);
       const s = {};
       Object.entries(r.cols).forEach(([col, v]) => { if (v != null) s[keyOfCol.get(Number(col))] = v; });
       out.students.push({ id: sid, name: r.name, sec: id, s });
