@@ -52,5 +52,21 @@ describe("Students & PINs: email PINs from the app", () => {
     expect(body.messages[0].text).toContain("AAA111");
     expect(body.test).toBe(false);
     await waitFor(() => expect(screen.getByText(/Sent 1 email/)).toBeTruthy());
+    const asked = window.confirm.mock.calls[0][0];
+    expect(asked).toContain("AQUINO, ANA <ana@x.edu>");     // the confirmation lists who is about to be emailed
+    expect(asked).toContain("section BSIT 3-A");
+  });
+
+  it("can mark students as already emailed without sending anything", async () => {
+    const invoke = vi.fn();
+    const rpc = vi.fn(async () => ({ data: null, error: null }));
+    window.confirm = vi.fn(() => true);
+    const r = { ...roster, S1: { ...roster.S1, email: "ana@x.edu" } };
+    render(<PinsTab db={{ rpc, functions: { invoke } }} user={{ email: "t@x.edu" }} meta={{ salt: "x" }} sections={sections} roster={r} />);
+    fireEvent.click(screen.getByRole("button", { name: /^email pins$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark as already emailed/i }));
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith("mark_emailed", { p_ids: ["S1"] }));
+    expect(invoke).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText(/No email was sent/)).toBeTruthy());
   });
 });

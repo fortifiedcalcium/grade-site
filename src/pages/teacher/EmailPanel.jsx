@@ -44,7 +44,15 @@ export default function EmailPanel({ db, user, roster, sections, activeId, selec
   const sendAll = () => run(async () => {
     if (plan.unknown.length) throw new Error("Unknown placeholder" + (plan.unknown.length > 1 ? "s" : "") + ": " + plan.unknown.map((n) => "{{" + n + "}}").join(", ") + ". Nothing was sent.");
     if (!plan.ready.length) throw new Error("Nobody to email. Add emails first, or untick 'only students not emailed yet'.");
-    if (!window.confirm("Email " + plan.ready.length + " student" + (plan.ready.length === 1 ? "" : "s") + " their PIN now?")) return;
+    const names = plan.ready.slice(0, 8).map((m) => "  " + (roster[m.id] ? roster[m.id].name : m.id) + " <" + m.to + ">");
+    const scopeName = scope === "selected" ? "the selected students" : scope === "section" ? "section " + ((sections[activeId] && sections[activeId].name) || activeId) : "all sections";
+    const already = plan.skipped.filter((x) => x.reason === "already emailed").length;
+    if (!window.confirm(
+      "Email " + plan.ready.length + " student" + (plan.ready.length === 1 ? "" : "s") + " their PIN now?\n\n" +
+      "Sending to: " + scopeName + (onlyUnsent ? "" : " (INCLUDING students already emailed)") + "\n" +
+      names.join("\n") + (plan.ready.length > names.length ? "\n  ... and " + (plan.ready.length - names.length) + " more" : "") + "\n\n" +
+      (onlyUnsent ? already + " already-emailed student" + (already === 1 ? " is" : "s are") + " skipped." : "Students who already got their PIN will get it again.")
+    )) return;
     let ok = 0; const failed = [];
     for (let i = 0; i < plan.ready.length; i += MAX_BATCH) {
       setLog("Sending " + Math.min(i + MAX_BATCH, plan.ready.length) + " of " + plan.ready.length + "...");
@@ -52,6 +60,15 @@ export default function EmailPanel({ db, user, roster, sections, activeId, selec
       results.forEach((r) => (r.ok ? ok++ : failed.push(r.id + ": " + r.error)));
     }
     setLog("Sent " + ok + " email" + (ok === 1 ? "" : "s") + "." + (failed.length ? " Failed (" + failed.length + "): " + failed.slice(0, 5).join("; ") + (failed.length > 5 ? "; ..." : "") : ""));
+  });
+
+  /* For students who were emailed some other way (the old mail merge, a manual email): stops Send PINs from emailing them again */
+  const markAll = () => run(async () => {
+    const list = plan.ready.map((m) => m.id);
+    if (!list.length) throw new Error("Nobody to mark. Only students with a valid email who are not marked yet are counted.");
+    if (!window.confirm("Mark " + list.length + " student" + (list.length === 1 ? "" : "s") + " as already emailed WITHOUT sending anything? Send PINs will then skip them.")) return;
+    await markEmailed(db, list);
+    setLog("Marked " + list.length + " student" + (list.length === 1 ? "" : "s") + " as already emailed. No email was sent.");
   });
 
   const importFile = (e) => {
@@ -105,6 +122,7 @@ export default function EmailPanel({ db, user, roster, sections, activeId, selec
       </p>
       <div className="row">
         <button className="btn" disabled={busy} onClick={sendTest}>Send a test to me</button>
+        <button className="btn" disabled={busy || !plan.ready.length} onClick={markAll} title="Use when these students already have their PIN from another email; sends nothing">Mark as already emailed</button>
         <button className="btn primary" disabled={busy || !plan.ready.length || plan.unknown.length > 0} onClick={sendAll}>Send PINs ({plan.ready.length})</button>
       </div>
       {log && <div className="banner info" style={{ marginTop: 10 }}>{log}</div>}
