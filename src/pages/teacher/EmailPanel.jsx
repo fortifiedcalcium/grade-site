@@ -1,6 +1,6 @@
-import React, { useMemo, useRef, useState } from "react";
-import { saveEmails, markEmailed, sendPinEmails } from "../../lib/db.js";
-import { DEFAULT_TEMPLATE, PLACEHOLDERS, MAX_BATCH, buildPlan, renderMessage, parseEmailCsv, isValidEmail } from "../../lib/emailpins.js";
+import React, { useMemo, useState } from "react";
+import { markEmailed, sendPinEmails } from "../../lib/db.js";
+import { DEFAULT_TEMPLATE, PLACEHOLDERS, MAX_BATCH, buildPlan, renderMessage, isValidEmail } from "../../lib/emailpins.js";
 
 const KEY = "pin-email-template";
 const loadTemplate = () => {
@@ -15,7 +15,6 @@ export default function EmailPanel({ db, user, roster, sections, activeId, selec
   const [onlyUnsent, setOnlyUnsent] = useState(true);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState("");
-  const fileRef = useRef(null);
   const set = (k) => (e) => setT((x) => { const n = { ...x, [k]: e.target.value }; storeTemplate(n); return n; });
   const link = window.location.origin;
   const me = (user && user.email) || "";
@@ -71,26 +70,10 @@ export default function EmailPanel({ db, user, roster, sections, activeId, selec
     setLog("Marked " + list.length + " student" + (list.length === 1 ? "" : "s") + " as already emailed. No email was sent.");
   });
 
-  const importFile = (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = "";
-    if (!file) return;
-    run(async () => {
-      const rows = parseEmailCsv(await file.text());
-      const good = rows.filter((r) => roster[r.id] && isValidEmail(r.email));
-      const bad = rows.length - good.length;
-      if (!good.length) throw new Error("No usable rows. The file needs a 'Student no.' column and an 'Email' column.");
-      await saveEmails(db, good.map((r) => ({ id: r.id, email: r.email })));
-      const sent = good.filter((r) => r.sent).map((r) => r.id);
-      if (sent.length) await markEmailed(db, sent);
-      setLog("Saved " + good.length + " email" + (good.length === 1 ? "" : "s") + (sent.length ? "; " + sent.length + " marked as already emailed" : "") + (bad ? "; ignored " + bad + " row" + (bad === 1 ? "" : "s") + " (unknown student number or invalid email)." : "."));
-    });
-  };
-
   return (
     <div className="card noprint" role="region" aria-label="Email PINs">
       <div className="row"><strong>Email PINs to students</strong><button className="btn small ghost" onClick={onClose}>Close</button></div>
-      <p className="muted small">Each student gets only their own PIN, sent from the site (replies go to {t.replyTo || me || "you"}). Type emails in the Email column, or import a file with "Student no." and "Email" columns.</p>
+      <p className="muted small">Each student gets only their own PIN, sent from the site (replies go to {t.replyTo || me || "you"}). Type emails in the Email column, or use **Import emails (CSV)** in the toolbar above.</p>
       <div className="row">
         <label className="inline">Send to
           <select value={scope} onChange={(e) => setScope(e.target.value)}>
@@ -100,8 +83,6 @@ export default function EmailPanel({ db, user, roster, sections, activeId, selec
           </select>
         </label>
         <label className="inline"><input type="checkbox" checked={onlyUnsent} onChange={(e) => setOnlyUnsent(e.target.checked)} /> Only students not emailed yet</label>
-        <button className="btn" disabled={busy} onClick={() => fileRef.current && fileRef.current.click()}>Import emails (CSV)</button>
-        <input ref={fileRef} type="file" accept=".csv,.txt,text/csv" hidden onChange={importFile} aria-label="Email CSV file" />
       </div>
       <div className="row">
         <label className="inline">Sender name <input value={t.sender} onChange={set("sender")} /></label>

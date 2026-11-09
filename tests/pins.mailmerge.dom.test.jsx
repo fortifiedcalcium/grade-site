@@ -70,3 +70,19 @@ describe("Students & PINs: email PINs from the app", () => {
     await waitFor(() => expect(screen.getByText(/No email was sent/)).toBeTruthy());
   });
 });
+
+describe("Students & PINs: import emails", () => {
+  it("has the import button in the toolbar next to Email PINs, and marks 'Sent' rows as already emailed", async () => {
+    const rpc = vi.fn(async () => ({ data: null, error: null }));
+    render(<PinsTab db={{ rpc }} user={{ email: "t@x.edu" }} meta={{ salt: "x" }} sections={sections} roster={roster} />);
+    const emailBtn = screen.getByRole("button", { name: /^email pins$/i });
+    const importBtn = screen.getByRole("button", { name: /import emails/i });
+    expect(emailBtn.nextElementSibling).toBe(importBtn);
+    const csv = "Email,Student no.,Status\nana@x.edu,S1,sent\nben@x.edu,S2,\n";
+    const file = Object.assign(new File([csv], "e.csv", { type: "text/csv" }), { text: async () => csv });   // jsdom's File has no text()
+    fireEvent.change(screen.getByLabelText("Email CSV file"), { target: { files: [file] } });
+    await waitFor(() => expect(rpc).toHaveBeenCalledWith("mark_emailed", { p_ids: ["S1"] }));
+    expect(rpc).toHaveBeenCalledWith("set_student_emails", { p_rows: [{ id: "S1", email: "ana@x.edu" }, { id: "S2", email: "ben@x.edu" }] });
+    await waitFor(() => expect(screen.getByText(/Saved 2 emails; 1 marked as already emailed/)).toBeTruthy());
+  });
+});

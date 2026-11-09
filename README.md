@@ -52,7 +52,7 @@ Before importing, you can check a workbook from the terminal:
 ## Sending PINs by email
 
 **Students & PINs > Email PINs** emails each student their own PIN from the site. Type each student's email in the
-**Email** column (or **Import emails (CSV)** with "Student no." and "Email" columns), write the message, press
+**Email** column (or use **Import emails (CSV)** next to it, with "Student no." and "Email" columns), write the message, press
 **Send a test to me**, then **Send PINs**. Students already emailed are skipped unless you untick the box; changing a
 student's email or resetting their PIN makes them "not emailed" again. Student emails are stored in the `roster`
 table, which only instructors can read.

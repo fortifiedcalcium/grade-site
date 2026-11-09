@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import Icon from "../../Icon.jsx";
-import { addStudent, removeStudent, removeStudents, resetPin, saveEmails } from "../../lib/db.js";
+import { addStudent, removeStudent, removeStudents, resetPin, saveEmails, markEmailed } from "../../lib/db.js";
 import { useSelection } from "../../lib/useSelection.js";
 import { csvCell, downloadText } from "../../lib/util.js";
 import { buildMailMergeRows, mailMergeCsv } from "../../lib/mailmerge.js";
-import { isValidEmail } from "../../lib/emailpins.js";
+import { isValidEmail, parseEmailCsv } from "../../lib/emailpins.js";
 import EmailPanel from "./EmailPanel.jsx";
 
 export default function PinsTab({ db, meta, sections, roster, user }) {
@@ -15,6 +15,7 @@ export default function PinsTab({ db, meta, sections, roster, user }) {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [emailing, setEmailing] = useState(false);
+  const fileRef = useRef(null);
   const [form, setForm] = useState({ id: "", name: "" });
   const activeId = sections[secId] ? secId : secIds[0] || "";
 
@@ -57,6 +58,23 @@ export default function PinsTab({ db, meta, sections, roster, user }) {
     guard(async () => { await saveEmails(db, [{ id, email: v }]); });
   };
 
+  /* A CSV with "Student no." and "Email" columns; rows whose Status starts with "Sent" are marked as already emailed */
+  const importEmails = (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    guard(async () => {
+      const rows = parseEmailCsv(await file.text());
+      const good = rows.filter((r) => roster[r.id] && isValidEmail(r.email));
+      const bad = rows.length - good.length;
+      if (!good.length) throw new Error("No usable rows. The file needs a 'Student no.' column and an 'Email' column.");
+      await saveEmails(db, good.map((r) => ({ id: r.id, email: r.email })));
+      const sent = good.filter((r) => r.sent).map((r) => r.id);
+      if (sent.length) await markEmailed(db, sent);
+      setMsg("Saved " + good.length + " email" + (good.length === 1 ? "" : "s") + (sent.length ? "; " + sent.length + " marked as already emailed" : "") + (bad ? "; ignored " + bad + " row" + (bad === 1 ? "" : "s") + " (unknown student number or invalid email)." : "."));
+    });
+  };
+
   const exportCsv = () => {
     const lines = [["Student no.", "Name", "Section", "PIN"].join(",")];
     rows.forEach(([id, r]) => lines.push([id, r.name, sections[r.sec] ? sections[r.sec].name : r.sec, r.pin].map(csvCell).join(",")));
@@ -84,6 +102,8 @@ export default function PinsTab({ db, meta, sections, roster, user }) {
         <button className="btn" onClick={exportCsv}><Icon name="download" /> Download PIN list</button>
         <button className="btn" onClick={() => window.print()}><Icon name="print" /> Print</button>
         <button className="btn primary" onClick={() => setEmailing((x) => !x)}><Icon name="mail" /> Email PINs</button>
+        <button className="btn" disabled={busy} onClick={() => fileRef.current && fileRef.current.click()} title="Fill in student emails from a CSV with Student no. and Email columns"><Icon name="upload" /> Import emails (CSV)</button>
+        <input ref={fileRef} type="file" accept=".csv,.txt,text/csv" hidden onChange={importEmails} aria-label="Email CSV file" />
         <button className="btn" onClick={exportMailMerge} title="All sections, ready for the Gmail mail merge"><Icon name="mail" /> Mail merge file</button>
         {sel.selected.length > 0 && (
           <>
