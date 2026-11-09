@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import Icon from "../../Icon.jsx";
 import { computeGrade, isNum } from "../../lib/grading.js";
 import { studentNo } from "../../lib/keys.js";
+import { SectionPicker, useSectionPicker } from "../../lib/sectionPicker.jsx";
 import { addStudent, clearSectionScores, removeStudent, removeStudents, saveScore } from "../../lib/db.js";
 import { useSelection } from "../../lib/useSelection.js";
 import { buildStats, filterAndSort, namesText, SORT_OPTIONS, STATUS_OPTIONS } from "../../lib/stats.js";
@@ -44,8 +45,8 @@ function ScoreCell({ value, max, onCommit }) {
 }
 
 export default function GradesTab({ db, meta, sections, roster, records, goImport }) {
-  const secIds = Object.keys(sections);
-  const [secId, setSecId] = useState(secIds[0] || "");
+  const picker = useSectionPicker(sections);
+  const secIds = picker.allIds;
   const [q, setQ] = useState("");
   const [form, setForm] = useState({ id: "", name: "" });
   const [msg, setMsg] = useState("");
@@ -59,8 +60,8 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
   const [showFinal, setShowFinal] = useState(true);
   // the column picker starts open on wide screens and folded away on phones, where space is tight
   const [colsOpen, setColsOpen] = useState(() => !window.matchMedia || window.matchMedia("(min-width: 900px)").matches);
-  const sec = sections[secId] || sections[secIds[0]];
-  const activeId = sections[secId] ? secId : secIds[0];
+  const sec = sections[picker.activeId] || null;
+  const activeId = picker.activeId;
 
   const graded = useMemo(() => {
     if (!sec) return [];
@@ -151,11 +152,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
   return (
     <>
       <div className="row toolbar">
-        <label className="inline"><Icon name="users" /> Section
-          <select value={activeId} onChange={(e) => setSecId(e.target.value)}>
-            {secIds.map((id) => <option key={id} value={id}>{sections[id].name}</option>)}
-          </select>
-        </label>
+        <SectionPicker picker={picker} sections={sections} />
         <input className="search" placeholder="Search name or number" value={q} onChange={(e) => setQ(e.target.value)} />
         <span className="muted small">{rows.length === graded.length ? rows.length : rows.length + " of " + graded.length} students · changes save automatically and appear on students' screens when they refresh</span>
         <label className="inline"><Icon name="download" /> Export as

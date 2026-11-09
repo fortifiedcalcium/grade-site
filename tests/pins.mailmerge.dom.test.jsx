@@ -86,3 +86,35 @@ describe("Students & PINs: import emails", () => {
     await waitFor(() => expect(screen.getByText(/Saved 2 emails; 1 marked as already emailed/)).toBeTruthy());
   });
 });
+
+describe("Subject filter", () => {
+  const subjSections = {
+    a: { name: "3A", subject: { code: "IT301", desc: "Web Systems" } },
+    b: { name: "3B", subject: { code: "IT301", desc: "Web Systems" } },
+    c: { name: "2A", subject: { code: "IT201", desc: "Data Structures" } },
+    d: { name: "1A", subject: { code: "", desc: "" } },
+  };
+  const names = () => [...screen.getByLabelText(/^.*Section$/).querySelectorAll("option")].map((o) => o.textContent);
+
+  it("narrows the section list to the chosen subject and remembers it", () => {
+    window.sessionStorage.clear();
+    render(<PinsTab db={{ rpc: vi.fn() }} meta={{ salt: "x" }} sections={subjSections} roster={{}} />);
+    expect(names()).toEqual(["3A", "3B", "2A", "1A"]);
+    fireEvent.change(screen.getByLabelText(/Subject/), { target: { value: "IT301" } });
+    expect(names()).toEqual(["3A", "3B"]);
+    fireEvent.change(screen.getByLabelText(/Subject/), { target: { value: "IT201" } });
+    expect(names()).toEqual(["2A"]);
+    fireEvent.change(screen.getByLabelText(/Subject/), { target: { value: "__none" } });
+    expect(names()).toEqual(["1A"]);
+    cleanup();
+    // a new screen (for example the other tab) starts on the same subject
+    render(<PinsTab db={{ rpc: vi.fn() }} meta={{ salt: "x" }} sections={subjSections} roster={{}} />);
+    expect(names()).toEqual(["1A"]);
+    window.sessionStorage.clear();
+  });
+  it("hides the subject menu when no section has a subject code", () => {
+    window.sessionStorage.clear();
+    render(<PinsTab db={{ rpc: vi.fn() }} meta={{ salt: "x" }} sections={sections} roster={roster} />);
+    expect(screen.queryByLabelText(/Subject/)).toBeNull();
+  });
+});

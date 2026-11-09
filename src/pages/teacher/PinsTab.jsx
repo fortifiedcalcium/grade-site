@@ -7,10 +7,11 @@ import { buildMailMergeRows, mailMergeCsv } from "../../lib/mailmerge.js";
 import { isValidEmail, parseEmailCsv } from "../../lib/emailpins.js";
 import { studentNo, safeId } from "../../lib/keys.js";
 import EmailPanel from "./EmailPanel.jsx";
+import { SectionPicker, useSectionPicker } from "../../lib/sectionPicker.jsx";
 
 export default function PinsTab({ db, meta, sections, roster, user }) {
-  const secIds = Object.keys(sections);
-  const [secId, setSecId] = useState("");
+  const picker = useSectionPicker(sections);
+  const secIds = picker.allIds;
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [msg, setMsg] = useState("");
@@ -18,7 +19,7 @@ export default function PinsTab({ db, meta, sections, roster, user }) {
   const [emailing, setEmailing] = useState(false);
   const fileRef = useRef(null);
   const [form, setForm] = useState({ id: "", name: "" });
-  const activeId = sections[secId] ? secId : secIds[0] || "";
+  const activeId = picker.activeId;
 
   const rows = useMemo(
     () =>
@@ -95,11 +96,7 @@ export default function PinsTab({ db, meta, sections, roster, user }) {
   return (
     <>
       <div className="row toolbar">
-        <label className="inline"><Icon name="users" /> Section
-          <select value={activeId} onChange={(e) => setSecId(e.target.value)}>
-            {secIds.map((id) => <option key={id} value={id}>{sections[id].name}</option>)}
-          </select>
-        </label>
+        <SectionPicker picker={picker} sections={sections} />
         <input className="search" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
         <label className="inline"><input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} /> Show PINs</label>
         <button className="btn" onClick={exportCsv}><Icon name="download" /> Download PIN list</button>

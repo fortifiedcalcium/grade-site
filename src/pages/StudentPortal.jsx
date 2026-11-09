@@ -41,7 +41,7 @@ export function GradeView({ data, onRefresh, onLogout, onAcknowledge, onSwitch =
           {data.others && data.others.length > 1 && (
             <label className="inline">Section
               <select value={data.key} disabled={busy} onChange={(e) => onSwitch(e.target.value)} aria-label="Section">
-                {data.others.map((o) => <option key={o.key} value={o.key}>{(o.section && o.section.name) || o.record.sec}</option>)}
+                {data.others.map((o) => <option key={o.key} value={o.key}>{(o.section && o.section.subject && o.section.subject.code ? o.section.subject.code + " · " : "") + ((o.section && o.section.name) || o.record.sec)}</option>)}
               </select>
             </label>
           )}
