@@ -64,7 +64,7 @@ async function toXlsx(report, assets) {
   /* ---- sheet 1: the report */
   const ws = wb.addWorksheet("Grade Report", { views: [{ showGridLines: false }] });
   const n = report.columns.length;
-  const widths = report.columns.map((c, i) => (i === 0 ? 14 : i === 1 ? 30 : c.label === "Remarks" ? 12 : c.label === "Final" || c.label === "Eq." ? 9 : 14));
+  const widths = report.columns.map((c, i) => (i === 0 ? 14 : i === 1 ? 30 : c.label === "Remarks" ? 12 : c.label === "Posting" ? 22 : c.label === "Final" || c.label === "Eq." ? 9 : 14));
   /* A narrow table (few categories) would not leave room for the logos beside the centred title, so the
      columns are widened evenly until the letterhead fits. */
   const colPx = (w) => Math.round(w * 7 + 5);
@@ -165,11 +165,11 @@ async function toXlsx(report, assets) {
 
   /* ---- sheet 2: every score */
   const sc = wb.addWorksheet("All scores", { views: [{ state: "frozen", xSplit: 2, ySplit: 1 }] });
-  sc.columns = report.detailHead.map((_, i) => ({ width: i === 0 ? 14 : i === 1 ? 30 : 12 }));
+  sc.columns = report.detailHead.map((_, i) => ({ width: i === 0 ? 14 : i === 1 ? 30 : i === report.detailHead.length - 1 ? 22 : 12 }));
   report.detailHead.forEach((h, i) => Object.assign(sc.getCell(1, i + 1), { value: h }, head));
   sc.getRow(1).height = 42;
-  const textCols = report.detailHead.length - 1; // the Remarks column, when the final columns are shown
-  const hasFinal = report.detailHead[report.detailHead.length - 1] === "Remarks";
+  const textCols = report.detailHead.length - 2; // the Remarks column, when the final columns are shown (Posting follows it)
+  const hasFinal = report.detailHead[textCols] === "Remarks";
   report.detailRows.forEach((row, idx) => {
     const kind = report.detailKinds[idx];
     row.forEach((v, i) => {
@@ -177,7 +177,7 @@ async function toXlsx(report, assets) {
       cell.value = v === "" ? null : v;
       cell.font = font({ bold: kind !== "student" });
       cell.border = border;
-      cell.alignment = { horizontal: i < 2 || (hasFinal && i === textCols) ? "left" : "right", vertical: "middle" };
+      cell.alignment = { horizontal: i < 2 || i === report.detailHead.length - 1 || (hasFinal && i === textCols) ? "left" : "right", vertical: "middle" };
       if (typeof v === "number" && (kind === "stat" || (hasFinal && i >= textCols - 2 && i < textCols))) cell.numFmt = "0.00";
       if (kind !== "student") cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFEFEF" } };
     });

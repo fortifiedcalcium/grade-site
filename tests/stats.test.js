@@ -81,15 +81,15 @@ describe("report with a view", () => {
 
   it("with every category shown it lists category points", () => {
     const r = build({});
-    expect(r.columns.map((c) => c.label)).toEqual(["No.", "Name", "Activities (30%)", "Quizzes (30%)", "Final Exam (40%)", "Final", "Eq.", "Remarks"]);
+    expect(r.columns.map((c) => c.label)).toEqual(["No.", "Name", "Activities (30%)", "Quizzes (30%)", "Final Exam (40%)", "Final", "Eq.", "Remarks", "Posting"]);
     expect(r.rowKinds).toEqual(["student", "student", "student", "student", "stat", "stat", "stat"]);
   });
   it("with one category shown it lists each score of that category and its statistics", () => {
     const r = build({ hiddenCats: ["quiz", "final"], showFinal: false, filterNote: "Columns: Activities" });
-    expect(r.columns.map((c) => c.label)).toEqual(["No.", "Name", "Act 1 (/10)", "Act 2 (/10)"]);
-    expect(r.rows[0]).toEqual(["S1", "ANA", "10", "8"]);
-    expect(r.rows[1]).toEqual(["S2", "BEN", "6", ""]);
-    const stat = Object.fromEntries(r.rows.slice(4).map((row) => [row[1], row.slice(2)]));
+    expect(r.columns.map((c) => c.label)).toEqual(["No.", "Name", "Act 1 (/10)", "Act 2 (/10)", "Posting"]);
+    expect(r.rows[0]).toEqual(["S1", "ANA", "10", "8", "Not yet"]);
+    expect(r.rows[1]).toEqual(["S2", "BEN", "6", "", "Not yet"]);
+    const stat = Object.fromEntries(r.rows.slice(4).map((row) => [row[1], row.slice(2, -1)]));
     expect(stat.Highest).toEqual(["10.00", "9.00"]);
     expect(stat.Lowest).toEqual(["6.00", "8.00"]);
     expect(stat.Average).toEqual(["8.25", "8.50"]);
@@ -110,7 +110,7 @@ describe("report with a view", () => {
   });
   it("the CSV text keeps whole scores whole and gives grades two decimals", () => {
     const r = build({ hiddenCats: ["quiz", "final"] });
-    expect(r.detailHead).toEqual(["Student no.", "Name", "Activities Act 1", "Activities Act 2", "Final grade", "Equivalent", "Remarks"]);
+    expect(r.detailHead).toEqual(["Student no.", "Name", "Activities Act 1", "Activities Act 2", "Final grade", "Equivalent", "Remarks", "Posting"]);
     expect(r.detailText[1].slice(0, 4)).toEqual(["S1", "ANA", "10", "8"]);
     expect(r.detailText.at(-3).slice(0, 4)).toEqual(["", "Highest", "10.00", "9.00"]);
   });

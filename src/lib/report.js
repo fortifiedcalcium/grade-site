@@ -31,9 +31,10 @@ const PAGE_WIDTH_CM = 18;
 
 const safeName = (s) => String(s || "section").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "section";
 const show2 = (v) => (isNum(v) ? fmt2(v) : "—");
+const postingText = (ack) => (ack ? "Ready" : "Not yet");
 const cellText = (v) => (hasValue(v) ? (isNum(v) ? fmtNum(v) : String(v)) : "");
 
-/* sec: the section object; students: [{ id, name, s }] already sorted and filtered the way they are on screen */
+/* sec: the section object; students: [{ id, name, s, ack }] already sorted and filtered the way they are on screen */
 export function buildReport({ sec, meta, students, now = new Date(), view = {} }) {
   const { hiddenCats = [], showFinal = true, show = "both", filterNote = "" } = view;
   const allCats = sec.scheme.categories || [];
@@ -61,33 +62,36 @@ export function buildReport({ sec, meta, students, now = new Date(), view = {} }
   const finalCols = showFinal
     ? [{ label: "Final", align: "right", widthCm: 1.2 }, { label: "Eq.", align: "right", widthCm: 0.9 }, { label: "Remarks", align: "left", widthCm: 1.5 }]
     : [];
+  const postCol = [{ label: "Posting", align: "left", widthCm: 2.0 }];
   const fixed = [{ label: "No.", align: "left", widthCm: 1.9 }, { label: "Name", align: "left", widthCm: 3.4 }];
-  const used = [...fixed, ...finalCols].reduce((a, c) => a + c.widthCm, 0);
+  const used = [...fixed, ...finalCols, ...postCol].reduce((a, c) => a + c.widthCm, 0);
   const bodyCount = byItems ? items.length : cats.length;
   const bodyW = bodyCount ? Math.min(byItems ? 1.8 : 1.55, Math.max(1.1, (PAGE_WIDTH_CM - used) / bodyCount)) : 0;
   const bodyCols = byItems
     ? items.map((i) => ({ label: i.label + " (/" + fmtNum(i.max) + ")", align: "right", widthCm: bodyW }))
     : cats.map((c) => ({ label: c.title + " (" + fmtNum(c.weight) + "%)", align: "right", widthCm: bodyW }));
-  const columns = [...fixed, ...bodyCols, ...finalCols];
+  const columns = [...fixed, ...bodyCols, ...finalCols, ...postCol];
 
   const visibleCatPts = (g) => g.cats.filter((c) => cats.some((k) => k.id === c.id));
-  const studentRow = ({ id, name, s, g }) => [
+  const studentRow = ({ id, name, s, g, ack }) => [
     id,
     name,
     ...(byItems ? items.map((i) => cellText(s[i.k])) : visibleCatPts(g).map((c) => fmt2(c.pts))),
     ...(showFinal ? [g.pending ? "—" : fmt2(g.total), g.pending ? "—" : g.equiv.toFixed(2), g.pending ? "Pending" : g.remarks] : []),
+    postingText(ack),
   ];
-  const studentRaw = ({ id, name, s, g }) => [
+  const studentRaw = ({ id, name, s, g, ack }) => [
     id,
     name,
     ...(byItems ? items.map((i) => (hasValue(s[i.k]) ? s[i.k] : null)) : visibleCatPts(g).map((c) => Math.round(c.pts * 100) / 100)),
     ...(showFinal ? [g.pending ? null : g.total, g.pending ? null : g.equiv, g.pending ? "Pending" : g.remarks] : []),
+    postingText(ack),
   ];
 
   const STAT_LABELS = [["Highest", "max"], ["Lowest", "min"], ["Average", "avg"]];
   const bodyStat = (pick) => (byItems ? items.map((i) => stats.items[i.k][pick]) : stats.cats.map((c) => c[pick]));
   const finalStat = (pick) => (showFinal ? [stats.final[pick], pick === "avg" ? stats.equiv.avg : null, ""] : []);
-  const statRaw = (pick) => ["", STAT_LABELS.find(([, p]) => p === pick)[0], ...bodyStat(pick), ...finalStat(pick)];
+  const statRaw = (pick) => ["", STAT_LABELS.find(([, p]) => p === pick)[0], ...bodyStat(pick), ...finalStat(pick), ""];
   const statText = (pick) => statRaw(pick).map((v, i) => (i < 2 ? v : v === "" ? "" : show2(v)));
 
   const rows = [];
@@ -97,21 +101,21 @@ export function buildReport({ sec, meta, students, now = new Date(), view = {} }
   if (showStats && graded.length) STAT_LABELS.forEach(([, pick]) => { rows.push(statText(pick)); rawRows.push(statRaw(pick)); rowKinds.push("stat"); });
 
   /* ---- every score (CSV and the second Excel sheet): always the individual scores of the shown categories */
-  const detailHead = ["Student no.", "Name", ...items.map((i) => i.cat.title + " " + i.label), ...(showFinal ? ["Final grade", "Equivalent", "Remarks"] : [])];
+  const detailHead = ["Student no.", "Name", ...items.map((i) => i.cat.title + " " + i.label), ...(showFinal ? ["Final grade", "Equivalent", "Remarks"] : []), "Posting"];
   const detailFinal = (g) => (showFinal ? [g.pending ? null : g.total, g.pending ? null : g.equiv, g.pending ? "Pending" : g.remarks] : []);
   const detailRows = [];
   const detailKinds = [];
-  detailRows.push(["", "Maximum score", ...items.map((i) => i.max), ...(showFinal ? [null, null, ""] : [])]);
+  detailRows.push(["", "Maximum score", ...items.map((i) => i.max), ...(showFinal ? [null, null, ""] : []), ""]);
   detailKinds.push("max");
-  if (showStudents) graded.forEach((x) => { detailRows.push([x.id, x.name, ...items.map((i) => (hasValue(x.s[i.k]) ? x.s[i.k] : null)), ...detailFinal(x.g)]); detailKinds.push("student"); });
+  if (showStudents) graded.forEach((x) => { detailRows.push([x.id, x.name, ...items.map((i) => (hasValue(x.s[i.k]) ? x.s[i.k] : null)), ...detailFinal(x.g), postingText(x.ack)]); detailKinds.push("student"); });
   if (showStats && graded.length) {
     STAT_LABELS.forEach(([label, pick]) => {
-      detailRows.push(["", label, ...items.map((i) => stats.items[i.k][pick]), ...(showFinal ? [stats.final[pick], pick === "avg" ? stats.equiv.avg : null, ""] : [])]);
+      detailRows.push(["", label, ...items.map((i) => stats.items[i.k][pick]), ...(showFinal ? [stats.final[pick], pick === "avg" ? stats.equiv.avg : null, ""] : []), ""]);
       detailKinds.push("stat");
     });
   }
   // CSV wants text: whole numbers stay whole, final and equivalent get two decimals
-  const decimalFrom = showFinal ? detailHead.length - 3 : detailHead.length;
+  const decimalFrom = showFinal ? detailHead.length - 4 : detailHead.length;
   const detailText = detailRows.map((row, ri) => row.map((v, ci) => {
     if (v == null) return "";
     if (!isNum(v)) return v;

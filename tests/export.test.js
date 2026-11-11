@@ -32,9 +32,9 @@ beforeAll(() => {
 describe("report data", () => {
   it("has one row per student with weighted points, final, equivalent and remarks", () => {
     const r = buildReport({ sec, meta, students: students(3), now });
-    expect(r.columns.map((c) => c.label)).toEqual(["No.", "Name", "Quizzes (60%)", "Final Exam (40%)", "Final", "Eq.", "Remarks"]);
-    expect(r.rows[0]).toEqual(["2026-10000", "PEÑA, ÑOR", "51.00", "36.00", "87.00", "2.00", "Passed"]);
-    expect(r.rows[1].slice(-3)).toEqual(["—", "—", "Pending"]);
+    expect(r.columns.map((c) => c.label)).toEqual(["No.", "Name", "Quizzes (60%)", "Final Exam (40%)", "Final", "Eq.", "Remarks", "Posting"]);
+    expect(r.rows[0]).toEqual(["2026-10000", "PEÑA, ÑOR", "51.00", "36.00", "87.00", "2.00", "Passed", "Not yet"]);
+    expect(r.rows[1].slice(-4)).toEqual(["—", "—", "Pending", "Not yet"]);
     expect(r.summary).toBe("Passed: 2   Failed: 0   Pending: 1");
     expect(r.info).toContainEqual(["Date generated", "October 31, 2026"]);
   });
@@ -50,7 +50,7 @@ describe("export files", () => {
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const text = new TextDecoder("utf-8", { ignoreBOM: false }).decode(bytes);
     expect(text).toContain('"PEÑA, ÑOR"');
-    expect(text.split("\r\n")[0]).toBe("Student no.,Name,Quizzes Quiz 1,Quizzes Quiz 2,Final Exam Final,Final grade,Equivalent,Remarks");
+    expect(text.split("\r\n")[0]).toBe("Student no.,Name,Quizzes Quiz 1,Quizzes Quiz 2,Final Exam Final,Final grade,Equivalent,Remarks,Posting");
   });
 
   it("xlsx letterhead: full-width maroon band, centred merged titles, one info item per row, landscape print setup", async () => {

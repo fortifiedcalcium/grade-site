@@ -136,7 +136,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
     setExporting(true);
     setMsg("");
     try {
-      const report = buildReport({ sec, meta, students: rows.map((r) => ({ id: studentNo(r.id), name: r.name, s: r.s })), view: { hiddenCats, showFinal, show, filterNote } });
+      const report = buildReport({ sec, meta, students: rows.map((r) => ({ id: studentNo(r.id), name: r.name, s: r.s, ack: r.ack })), view: { hiddenCats, showFinal, show, filterNote } });
       const assets = format === "csv" ? null : await loadAssets();
       const { blob, filename } = await makeReportFile(format, report, assets);
       downloadBlob(blob, filename);
