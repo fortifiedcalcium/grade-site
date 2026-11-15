@@ -92,9 +92,9 @@ input.cell { width: 56px; padding: 3px 5px; text-align: right; border-width: 2px
 input.cell.over { border-color: var(--bad); } input.cell.err { border-color: var(--bad); background: var(--warn); } input.cell.saving { opacity: .6; }
 .tabs { display: flex; gap: 8px; margin: 0 0 20px; flex-wrap: wrap; padding: 2px 6px 6px 2px; }
 .tabs { -webkit-overflow-scrolling: touch; }
-.tabs button { font: inherit; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; font-size: .85rem; background: var(--card); border: var(--bw) solid var(--edge); box-shadow: var(--shadow-s); padding: 8px 14px; color: var(--ink); cursor: pointer; transition: transform .08s, box-shadow .08s; }
+.tabs button { font: inherit; font-weight: 700; font-size: 1.05rem; line-height: 1.3; background: var(--card); border: var(--bw) solid var(--edge); box-shadow: var(--shadow-s); padding: 10px 18px; color: var(--ink); cursor: pointer; transition: transform .08s, box-shadow .08s; }
 .tabs button:hover { background: var(--accent); color: #000; }
-.tabs button.on { background: var(--brand); color: var(--brand-ink); transform: translate(3px, 3px); box-shadow: 0 0 0 var(--edge); }
+.tabs button.on { background: var(--ink); color: var(--bg); font-weight: 800; transform: translate(3px, 3px); box-shadow: 0 0 0 var(--edge); }
 .search { min-width: 200px; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 12px; margin: 12px 0; align-items: end; }
 .span2 { grid-column: 1 / -1; }
@@ -132,7 +132,7 @@ details.card[open] > summary { margin-bottom: 8px; padding-bottom: 8px; border-b
   /* tabs scroll sideways instead of wrapping onto several lines */
   .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-left: -10px; margin-right: -10px; padding: 2px 10px 8px; }
   .tabs::-webkit-scrollbar { display: none; }
-  .tabs button { flex: none; white-space: nowrap; padding: 9px 12px; }
+  .tabs button { flex: none; white-space: nowrap; padding: 10px 14px; }
   .card { margin-right: 4px; box-shadow: 4px 4px 0 var(--edge); }
   /* 16px stops iPhones zooming the page when a field is tapped */
   input, select { font-size: 16px; }
