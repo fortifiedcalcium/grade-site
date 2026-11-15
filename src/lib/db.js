@@ -14,7 +14,7 @@
 
 import { recordKey, makePin, makeSalt, safeId, normId, studentNo, taggedRowId } from "./keys.js";
 import { DEFAULT_SCALE, DEFAULT_SCALE_NOTE } from "./grading.js";
-import { LEGACY_TERM, scopeToTerm, termOf } from "./terms.js";
+import { LEGACY_TERM, scopeToTerm, termOf, termsOf } from "./terms.js";
 
 const clean = (obj) => JSON.parse(JSON.stringify(obj)); // drops undefined
 
@@ -242,6 +242,28 @@ export async function addSection(db, sections, name, term, taken) {
   while ((sections || {})[id] || (taken && taken.has(id))) id = base + "-" + n++;
   await saveSection(db, id, { name: title, term: sem, headings: [], subject: { code: "", desc: "" }, instructor: "", roomTime: "", scheme: blankScheme() });
   return id;
+}
+
+/* Starts a new semester: copies the subject, instructor and grading scheme of every section of the newest semester
+   into `term`, with no students and no scores, so the new semester starts empty. Nothing in older semesters changes.
+   sections: the instructor's own; taken: ids that belong to other instructors. Returns how many sections were created. */
+export async function startSemester(db, sections, term, taken) {
+  const sem = String(term || "").trim();
+  if (!sem) throw new Error("Enter the new semester, e.g. 2026-2027 2nd Semester.");
+  if (termsOf(sections).includes(sem)) throw new Error(sem + " already exists.");
+  const from = termsOf(sections)[0];
+  const source = Object.entries(sections || {}).filter(([, x]) => termOf(x) === from);
+  if (!source.length) throw new Error("There are no sections to copy yet. Add a section instead.");
+  const used = new Set([...Object.keys(sections || {}), ...(taken || [])]);
+  for (const [, x] of source) {
+    const { count, owner, ...rest } = x; // eslint-disable-line no-unused-vars
+    const base = slugId(sem + " " + x.name) || "section";
+    let id = base, n = 2;
+    while (used.has(id)) id = base + "-" + n++;
+    used.add(id);
+    await saveSection(db, id, { ...rest, term: sem });
+  }
+  return source.length;
 }
 
 /* Removes the section and every student in it, with their scores. Returns how many students went. */

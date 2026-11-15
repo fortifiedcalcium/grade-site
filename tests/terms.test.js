@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { LEGACY_TERM, termOf, termsOf, scopeToTerm, compareTerms } from "../src/lib/terms.js";
+import { nextTerm, LEGACY_TERM, termOf, termsOf, scopeToTerm, compareTerms } from "../src/lib/terms.js";
 
 const parsed = () => ({
   sections: [{ id: "bsit-3a", name: "BSIT 3-A", subject: { code: "IT101" }, scheme: {} }],
@@ -34,5 +34,10 @@ describe("semesters", () => {
     const out = scopeToTerm(parsed(), LEGACY_TERM, {}, new Set(["bsit-3a"]));
     expect(out.sections[0].id).toBe("2026-2027-1st-semester--bsit-3a");
     expect(out.students[0].sec).toBe(out.sections[0].id);
+  });
+  it("suggests the next semester", () => {
+    expect(nextTerm("2026-2027 1st Semester")).toBe("2026-2027 2nd Semester");
+    expect(nextTerm("2026-2027 2nd Semester")).toBe("2027-2028 1st Semester");
+    expect(nextTerm("whatever")).toBe("");
   });
 });

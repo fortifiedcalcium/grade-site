@@ -45,3 +45,10 @@ export function scopeToTerm(parsed, term, existing, taken) {
   });
   return { ...parsed, sections, students: parsed.students.map((st) => ({ ...st, sec: idMap.get(st.sec) || st.sec })) };
 }
+
+/* The semester that follows `term`: "2026-2027 1st Semester" -> "2026-2027 2nd Semester" -> "2027-2028 1st Semester". */
+export function nextTerm(term) {
+  const m = /^(\d{4})-(\d{4})\s+(1st|2nd)\s+semester$/i.exec(String(term || "").trim());
+  if (!m) return "";
+  return m[3].toLowerCase() === "1st" ? m[1] + "-" + m[2] + " 2nd Semester" : Number(m[1]) + 1 + "-" + (Number(m[2]) + 1) + " 1st Semester";
+}

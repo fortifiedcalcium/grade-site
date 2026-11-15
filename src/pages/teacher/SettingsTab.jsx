@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import Icon from "../../Icon.jsx";
-import { termOf, termsOf, LEGACY_TERM } from "../../lib/terms.js";
-import { addSection, clearSectionScores, deleteSection, newCategoryId, newItemKey, saveMeta, saveSection } from "../../lib/db.js";
+import { termOf, termsOf, nextTerm, LEGACY_TERM } from "../../lib/terms.js";
+import { rememberTerm } from "../../lib/sectionPicker.jsx";
+import { startSemester, addSection, clearSectionScores, deleteSection, newCategoryId, newItemKey, saveMeta, saveSection } from "../../lib/db.js";
 
 function SectionEditor({ db, id, section, roster, terms }) {
   const [s, setS] = useState(() => JSON.parse(JSON.stringify(section)));
@@ -103,6 +104,19 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
   const [newTerm, setNewTerm] = useState(() => terms[0] || LEGACY_TERM);
   const untagged = Object.entries(sections).filter(([, x]) => !String(x.term || "").trim());
   const [tagMsg, setTagMsg] = useState("");
+  const [fresh, setFresh] = useState(() => nextTerm(terms[0]));
+  const [freshMsg, setFreshMsg] = useState("");
+  const beginSemester = async (e) => {
+    e.preventDefault();
+    setFreshMsg("");
+    const sem = fresh.trim();
+    if (!window.confirm('Start "' + sem + '"?\n\nEvery section of ' + terms[0] + ' is copied (subject and grading scheme only) with no students and no scores. ' + terms[0] + ' stays as it is.')) return;
+    try {
+      const n = await startSemester(db, sections, sem, takenIds);
+      rememberTerm(sem);
+      setFreshMsg(sem + " started with " + n + " empty section" + (n === 1 ? "" : "s") + ". Import or add students into it; the Grades tab now shows it.");
+    } catch (err) { setFreshMsg(err.message); }
+  };
   const tagAll = async () => {
     setTagMsg("");
     try {
@@ -142,6 +156,13 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
             })}
           </tbody>
         </table>
+        <form className="row" onSubmit={beginSemester}>
+          <strong>Start a new semester</strong>
+          <input aria-label="New semester" list="terms-list" value={fresh} onChange={(e) => setFresh(e.target.value)} placeholder="e.g. 2026-2027 2nd Semester" />
+          <button className="btn primary"><Icon name="plus" /> Start fresh</button>
+          <span className="muted small">Copies your sections' subjects and grading schemes with no students or scores. Earlier semesters stay untouched.</span>
+          {freshMsg && <span className="small" role="status">{freshMsg}</span>}
+        </form>
         {untagged.length > 0 && (
           <p className="row">
             <span className="small">{untagged.length} section{untagged.length === 1 ? "" : "s"} saved before semesters existed {untagged.length === 1 ? "is" : "are"} filed under {LEGACY_TERM}.</span>
