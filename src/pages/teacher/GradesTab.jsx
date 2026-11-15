@@ -20,6 +20,9 @@ function ScoreCell({ value, max, onCommit }) {
     setText(shown);
   }
   const over = isNum(parseScoreInput(text)) && parseScoreInput(text) > max;
+  const shownNum = parseScoreInput(text);
+  // colour hint only: below 75% of the maximum fails, 75% up to 78.5% is borderline (see DEFAULT_SCALE)
+  const perf = isNum(shownNum) && max > 0 ? (shownNum / max < 0.75 ? "fail" : shownNum / max < 0.785 ? "borderline" : "pass") : undefined;
   const commit = async () => {
     if (text.trim() === shown) return;
     const v = parseScoreInput(text);
@@ -34,6 +37,7 @@ function ScoreCell({ value, max, onCommit }) {
   return (
     <input
       className={"cell" + (over ? " over" : "") + (state === "error" ? " err" : "") + (state === "saving" ? " saving" : "")}
+      data-perf={perf}
       value={text}
       inputMode="decimal"
       title={over ? "Higher than the maximum of " + max : state === "error" ? "Not saved – try again" : ""}
@@ -160,7 +164,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
             {FORMATS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
           </select>
         </label>
-        <button className="btn" disabled={exporting || !rows.length} onClick={exportReport}><Icon name="download" /> {exporting ? "Exporting…" : "Export"}</button>
+        <button className="btn primary" disabled={exporting || !rows.length} onClick={exportReport}><Icon name="download" /> {exporting ? "Exporting…" : "Export"}</button>
         <button className="btn danger" disabled={busy} onClick={clearScores}><Icon name="trash" /> Clear all scores</button>
         {sel.selected.length > 0 && (
           <>
@@ -207,13 +211,13 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
                   <label className="inline"><input type="checkbox" aria-label="Select all students" checked={sel.allOn} onChange={(e) => sel.setAll(e.target.checked)} /> No.</label>
                 </th>
                 <th rowSpan={2} className="stick l2">Name</th>
-                {cats.map((c) => <th key={c.id} colSpan={(c.items || []).length} className="grp">{c.title} ({fmtNum(c.weight)}%)</th>)}
-                {showFinal && <><th rowSpan={2} className="num">Final</th><th rowSpan={2} className="num">Eq.</th><th rowSpan={2}>Remarks</th></>}
+                {cats.map((c) => <th key={c.id} data-cat={c.id} colSpan={(c.items || []).length} className="grp">{c.title} ({fmtNum(c.weight)}%)</th>)}
+                {showFinal && <><th rowSpan={2} className="num final-col">Final</th><th rowSpan={2} className="num final-col">Eq.</th><th rowSpan={2} className="final-col">Remarks</th></>}
                 <th rowSpan={2}>Posting</th>
                 <th rowSpan={2}><span className="sr-only">Delete</span></th>
               </tr>
               <tr>
-                {cats.flatMap((c) => (c.items || []).map((i) => <th key={i.k} className="num sub" title={i.label}>{i.label}<br /><span className="muted">/{fmtNum(i.max)}</span></th>))}
+                {cats.flatMap((c) => (c.items || []).map((i) => <th key={i.k} data-cat={c.id} className="num sub" title={i.label}>{i.label}<br /><span className="muted">/{fmtNum(i.max)}</span></th>))}
               </tr>
             </thead>
             <tbody>

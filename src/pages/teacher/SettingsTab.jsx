@@ -94,7 +94,7 @@ function SectionEditor({ db, id, section, roster, terms }) {
   );
 }
 
-export default function SettingsTab({ db, meta, sections, roster }) {
+export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
   const [m, setM] = useState({ title: meta.title || "", term: meta.term || "", note: meta.note || "" });
   const [msg, setMsg] = useState("");
   const [newName, setNewName] = useState("");
@@ -117,7 +117,7 @@ export default function SettingsTab({ db, meta, sections, roster }) {
   const createSection = async (e) => {
     e.preventDefault();
     setSecMsg("");
-    try { await addSection(db, sections, newName, newTerm); setNewName(""); setSecMsg("Section added. Open it below to set its grading scheme."); } catch (err) { setSecMsg(err.message); }
+    try { await addSection(db, sections, newName, newTerm, takenIds); setNewName(""); setSecMsg("Section added. Open it below to set its grading scheme."); } catch (err) { setSecMsg(err.message); }
   };
   return (
     <>

@@ -88,7 +88,7 @@ Sheets mail merge (`mailmerge/README.md`) still works if you prefer to send from
 
 ## How it protects grades
 
-Students have no accounts. Each record is stored under a secret key derived (PBKDF2) from student number + PIN + a private salt. Row level security gives students no access to the `records` table at all; the only door is the `get_record(key)` function, which returns **one** record for a key and never lists. Only accounts in `public.admins` can write, and the app cannot add to that table.
+Students have no accounts. Each record is stored under a secret key derived (PBKDF2) from student number + PIN + a private salt. Row level security gives students no access to the `records` table at all; the only door is the `get_record(key)` function, which returns **one** record for a key and never lists. Only accounts in `public.admins` can write, and the app cannot add to that table. Each section has an **owner** (the instructor who created or imported it): an instructor only sees and changes the students, PINs and scores of their own sections, enforced by row level security and by the write functions. An account with `is_super = true` in `public.admins` (set at the end of `schema.sql`) sees every section. Section names and grading schemes stay publicly readable so students can see their breakdown, and the page title/term/salt (`meta`) is shared. Student numbers are unique across the whole database, so two instructors cannot enroll the same student number; the second import is refused.
 
 Things to know:
 * **No lockout**: guesses are not rate-limited. Random 6-character PINs (about 887 million combinations) make guessing impractical, but do not replace them with short or easy PINs.

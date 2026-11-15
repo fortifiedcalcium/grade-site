@@ -97,7 +97,8 @@ export function createStudentApi(db) {
 
 const SOURCES = {
   meta: { table: "meta", pk: "id", shape: (rows) => toMeta([...rows.values()][0]) },
-  sections: { table: "sections", pk: "id", shape: (rows) => toSections([...rows.values()]) },
+  // the owner (an instructor's user id) rides along so the screens can show only the signed-in instructor's sections
+  sections: { table: "sections", pk: "id", shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.id, { ...r.data, owner: r.owner || null }])) },
   roster: {
     table: "roster", pk: "student_id",
     shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.student_id, { name: r.name, sec: r.sec, pin: r.pin, key: r.key, email: r.email || "", emailed: ms(r.emailed) }])),
@@ -166,7 +167,7 @@ export async function saveMeta(db, { title, term, note }) {
 }
 
 export async function saveSection(db, id, section) {
-  const { count, ...rest } = section; // eslint-disable-line no-unused-vars
+  const { count, owner, ...rest } = section; // eslint-disable-line no-unused-vars
   unwrap(await db.from("sections").upsert({ id, data: clean(rest), updated: new Date().toISOString() }));
 }
 
@@ -230,14 +231,15 @@ export function blankScheme() {
   };
 }
 
-export async function addSection(db, sections, name, term) {
+/* sections: the instructor's own sections; taken: ids that exist but belong to other instructors (ids are global) */
+export async function addSection(db, sections, name, term, taken) {
   const title = String(name || "").trim();
   const sem = String(term || "").trim() || LEGACY_TERM;
   if (!title) throw new Error("Enter a section name.");
   if (Object.values(sections || {}).some((x) => (x.name || "").toLowerCase() === title.toLowerCase() && termOf(x) === sem)) throw new Error("A section with that name already exists in " + sem + ".");
   const base = slugId(sem + " " + title) || "section";
   let id = base, n = 2;
-  while ((sections || {})[id]) id = base + "-" + n++;
+  while ((sections || {})[id] || (taken && taken.has(id))) id = base + "-" + n++;
   await saveSection(db, id, { name: title, term: sem, headings: [], subject: { code: "", desc: "" }, instructor: "", roomTime: "", scheme: blankScheme() });
   return id;
 }
@@ -328,8 +330,8 @@ export async function resetPin(db, meta, id, entry) {
 }
 
 /* Writes imported sections and students. Students already in the roster keep their PIN. */
-export async function importData(db, parsedIn, { meta, sections, roster, details, term, removeMissing, onProgress }) {
-  const parsed = scopeToTerm(parsedIn, term, sections);   // each semester keeps its own sections, students' scores and PINs
+export async function importData(db, parsedIn, { meta, sections, roster, details, term, taken, removeMissing, onProgress }) {
+  const parsed = scopeToTerm(parsedIn, term, sections, taken);   // each semester keeps its own sections, students' scores and PINs
   const salt = (meta && meta.salt) || makeSalt();
   const rosterNow = roster || {};
   const now = new Date().toISOString();
@@ -338,7 +340,7 @@ export async function importData(db, parsedIn, { meta, sections, roster, details
 
   const sectionRows = parsed.sections.map((sec) => {
     const merged = mergeSection((sections || {})[sec.id], sec);
-    const { count, ...rest } = merged; // eslint-disable-line no-unused-vars
+    const { count, owner, ...rest } = merged; // eslint-disable-line no-unused-vars
     return { id: sec.id, data: clean(rest), updated: now };
   });
   if (sectionRows.length) unwrap(await db.from("sections").upsert(sectionRows));

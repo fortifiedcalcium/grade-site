@@ -7,6 +7,8 @@ import { PGlite } from "@electric-sql/pglite";
 
 const ADMIN = "11111111-1111-1111-1111-111111111111";
 const OTHER = "22222222-2222-2222-2222-222222222222";
+const TEACHER2 = "33333333-3333-3333-3333-333333333333";   // another instructor, owns section "c"
+const SUPER = "44444444-4444-4444-4444-444444444444";      // sees everything
 let pg;
 
 const as = async (role, uid) => {
@@ -32,16 +34,18 @@ beforeAll(async () => {
     grant usage on schema public, auth to anon, authenticated;
     alter default privileges in schema public grant all on tables to anon, authenticated;
     alter default privileges in schema public grant execute on functions to public;
-    insert into auth.users values ('${ADMIN}', 'teacher@example.com'), ('${OTHER}', 'someone@example.com');
+    insert into auth.users values ('${ADMIN}', 'teacher@example.com'), ('${OTHER}', 'someone@example.com'),
+      ('${TEACHER2}', 'teacher2@example.com'), ('${SUPER}', 'super@example.com');
   `);
   await pg.exec(fs.readFileSync(new URL("../supabase/schema.sql", import.meta.url), "utf8"));
-  await pg.exec(`insert into public.admins values ('${ADMIN}')`);
+  await pg.exec(`insert into public.admins (user_id) values ('${ADMIN}'), ('${TEACHER2}')`);
+  await pg.exec(`insert into public.admins (user_id, is_super) values ('${SUPER}', true)`);
   await pg.exec(`
     insert into public.meta (id, title, salt) values (1, 'Grades', 'salt');
-    insert into public.sections (id, data) values ('a', '{"name":"A"}');
-    insert into public.roster values ('S1', 'Ana', 'a', '111111', 'key1'), ('S2', 'Ben', 'a', '222222', 'key2');
+    insert into public.sections (id, data, owner) values ('a', '{"name":"A"}', '${ADMIN}'), ('c', '{"name":"C"}', '${TEACHER2}');
+    insert into public.roster values ('S1', 'Ana', 'a', '111111', 'key1'), ('S2', 'Ben', 'a', '222222', 'key2'), ('T1', 'Tess', 'c', '666666', 'keyt1');
     insert into public.records (key, student_id, name, sec, s) values
-      ('key1', 'S1', 'Ana', 'a', '{"q1": 9}'), ('key2', 'S2', 'Ben', 'a', '{}');
+      ('key1', 'S1', 'Ana', 'a', '{"q1": 9}'), ('key2', 'S2', 'Ben', 'a', '{}'), ('keyt1', 'T1', 'Tess', 'c', '{"q1": 4}');
   `);
 });
 
@@ -49,7 +53,7 @@ describe("students (not signed in)", () => {
   it("can read the public tables", async () => {
     await as("anon");
     expect((await pg.query("select title from public.meta")).rows).toEqual([{ title: "Grades" }]);
-    expect((await pg.query("select id from public.sections")).rows).toEqual([{ id: "a" }]);
+    expect((await pg.query("select id from public.sections order by id")).rows).toEqual([{ id: "a" }, { id: "c" }]);   // sections stay public so students can see their grading scheme
   });
   it("cannot read or list the roster, records or admins", async () => {
     await as("anon");
@@ -186,5 +190,52 @@ describe("instructor", () => {
     expect((await pg.query("select 1 from public.sections where id = 'b'")).rows).toHaveLength(0);
     expect((await pg.query("select 1 from public.records where sec = 'b'")).rows).toHaveLength(0);
     expect((await pg.query("select 1 from public.roster where sec = 'a'")).rows.length).toBeGreaterThan(0);
+  });
+});
+
+describe("each instructor only sees and changes their own sections", () => {
+  it("lists only the instructor's own students and scores", async () => {
+    await as("authenticated", ADMIN);
+    expect((await pg.query("select student_id from public.roster order by 1")).rows.map((r) => r.student_id)).toEqual(["S1", "S2"]);
+    expect((await pg.query("select key from public.records order by 1")).rows.map((r) => r.key)).toEqual(["key1", "key2"]);
+    await as("authenticated", TEACHER2);
+    expect((await pg.query("select student_id from public.roster")).rows.map((r) => r.student_id)).toEqual(["T1"]);
+  });
+  it("a super instructor sees everyone", async () => {
+    await as("authenticated", SUPER);
+    expect((await pg.query("select * from public.roster")).rows.length).toBeGreaterThanOrEqual(3);
+  });
+  it("new sections belong to whoever creates them", async () => {
+    await as("authenticated", TEACHER2);
+    await pg.query(`insert into public.sections (id, data) values ('c2', '{"name":"C2"}')`);
+    expect((await pg.query("select owner from public.sections where id = 'c2'")).rows[0].owner).toBe(TEACHER2);
+    await rejects(pg.query(`insert into public.sections (id, data, owner) values ('c3', '{}', '${ADMIN}')`), /row-level security/);
+  });
+  it("cannot edit, take over or delete another instructor's section", async () => {
+    await as("authenticated", TEACHER2);
+    await pg.query(`update public.sections set data = '{"name":"hacked"}' where id = 'a'`);
+    await as("authenticated", ADMIN);
+    expect((await pg.query("select data->>'name' as n from public.sections where id = 'a'")).rows[0].n).toBe("A");
+    await as("authenticated", TEACHER2);
+    await rejects(pg.query(`insert into public.sections (id, data) values ('a', '{"name":"mine"}') on conflict (id) do update set data = excluded.data`), /row-level security/);
+    await rejects(pg.query("select public.delete_section('a')"), /not allowed/);
+  });
+  it("cannot change scores, PINs, emails or students of another instructor's section", async () => {
+    await as("authenticated", TEACHER2);
+    await pg.query("select public.set_score('key1', 'q1', '1')");
+    await rejects(pg.query("select public.reset_pin('S1', 'key1', 'keyx', '999999')"), /not allowed/);
+    await rejects(pg.query(`select public.delete_students('[{"id":"S1","key":"key1"}]')`), /not allowed/);
+    await rejects(pg.query(`select public.upsert_students('[{"id":"X1","name":"X","sec":"a","pin":"1","key":"kx"}]')`), /not allowed/);
+    await rejects(pg.query(`select public.upsert_students('[{"id":"S1","name":"Mine now","sec":"c","pin":"1","key":"keyz"}]')`), /already used by another instructor/);
+    await pg.query(`select public.set_student_emails('[{"id":"S1","email":"x@y.co"}]')`);
+    await pg.query(`select public.mark_emailed('["S1"]')`);
+    await as("authenticated", ADMIN);
+    expect((await pg.query("select s from public.records where key = 'key1'")).rows[0].s).toEqual({ q1: 9 });
+    const r = (await pg.query("select name, pin, email, emailed from public.roster where student_id = 'S1'")).rows[0];
+    expect(r).toMatchObject({ name: "Ana", pin: "111111", email: null, emailed: null });
+  });
+  it("students can still look up their record whoever owns the section", async () => {
+    await as("anon");
+    expect((await pg.query("select public.get_record('keyt1') as r")).rows[0].r).toMatchObject({ id: "T1", s: { q1: 4 } });
   });
 });

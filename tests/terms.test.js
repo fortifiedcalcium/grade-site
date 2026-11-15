@@ -30,4 +30,9 @@ describe("semesters", () => {
     const again = scopeToTerm(parsed(), "2026-2027 2nd Semester", { "bsit-3a": {}, [out.sections[0].id]: { term: "2026-2027 2nd Semester" } });
     expect(again.sections[0].id).toBe(out.sections[0].id);
   });
+  it("never reuses a section id that belongs to another instructor", () => {
+    const out = scopeToTerm(parsed(), LEGACY_TERM, {}, new Set(["bsit-3a"]));
+    expect(out.sections[0].id).toBe("2026-2027-1st-semester--bsit-3a");
+    expect(out.students[0].sec).toBe(out.sections[0].id);
+  });
 });

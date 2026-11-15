@@ -95,6 +95,16 @@ export function Dashboard({ user, initialTab = "grades" }) {
   const [roster, setRoster] = useState(undefined);
   const [records, setRecords] = useState(undefined);
   const [error, setError] = useState("");
+  const [superUser, setSuperUser] = useState(undefined);
+
+  // Each instructor works with their own sections; a "super" instructor (public.admins.is_super) sees all of them.
+  useEffect(() => {
+    let alive = true;
+    Promise.resolve(db.from("admins").select("is_super").eq("user_id", user.id).maybeSingle())
+      .then(({ data }) => alive && setSuperUser(Boolean(data && data.is_super)))
+      .catch(() => alive && setSuperUser(false));
+    return () => { alive = false; };
+  }, [db, user.id]);
 
   useEffect(() => {
     const onErr = () => setError("Lost access to the database. Check your connection or the rules.");
@@ -107,14 +117,17 @@ export function Dashboard({ user, initialTab = "grades" }) {
     return () => offs.forEach((off) => off());
   }, [db]);
 
-  const loading = [meta, sections, roster, records].some((x) => x === undefined);
+  const loading = [meta, sections, roster, records, superUser].some((x) => x === undefined);
   const [slow, setSlow] = useState(false);
   useEffect(() => {
     if (!loading) return;
     const t = setTimeout(() => setSlow(true), 12000);
     return () => clearTimeout(t);
   }, [loading]);
-  const ctx = { db, meta: meta || {}, sections: sections || {}, roster: roster || {}, records: records || {} };
+  const allSections = sections || {};
+  const mine = Object.fromEntries(Object.entries(allSections).filter(([, x]) => superUser || x.owner === user.id));
+  const takenIds = new Set(Object.keys(allSections).filter((id) => !mine[id]));
+  const ctx = { db, meta: meta || {}, sections: mine, takenIds, roster: roster || {}, records: records || {} };
 
   return (
     <main className="shell wide">

@@ -4,7 +4,7 @@ import { sheetsFromWorkbook, parseClassRecord } from "../../lib/importer.js";
 import { importData } from "../../lib/db.js";
 import { LEGACY_TERM, termsOf } from "../../lib/terms.js";
 
-export default function ImportTab({ db, meta, sections, roster }) {
+export default function ImportTab({ db, meta, sections, roster, takenIds }) {
   const [parsed, setParsed] = useState(null);
   const [fileName, setFileName] = useState("");
   const [details, setDetails] = useState({ title: meta.title || "", term: meta.term || "", note: meta.note || "" });
@@ -34,7 +34,7 @@ export default function ImportTab({ db, meta, sections, roster }) {
   const run = async () => {
     setBusy(true); setError(""); setProgress(0);
     try {
-      setResult(await importData(db, parsed, { meta, sections, roster, details, term, removeMissing, onProgress: setProgress }));
+      setResult(await importData(db, parsed, { meta, sections, roster, details, term, taken: takenIds, removeMissing, onProgress: setProgress }));
       setParsed(null);
     } catch (err) {
       setError("Import failed: " + (err.message || "unknown error"));

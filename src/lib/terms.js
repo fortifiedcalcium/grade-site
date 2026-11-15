@@ -25,19 +25,19 @@ export const termsOf = (sections, extra = []) =>
 
 /* Gives the imported sections a term and keeps them apart from other terms' sections.
    A section id that already exists in the same term is reused (re-import = update); one that exists in another
-   term gets a term prefix. Students follow their section's new id. Returns a new parsed object. */
-export function scopeToTerm(parsed, term, existing) {
+   term gets a term prefix. `taken` lists ids that belong to other instructors and must not be reused. Students follow their section's new id. Returns a new parsed object. */
+export function scopeToTerm(parsed, term, existing, taken) {
   const t = String(term || "").trim() || LEGACY_TERM;
   const ex = existing || {};
   const used = new Set();
   const idMap = new Map();
   const sections = parsed.sections.map((s) => {
     let id = s.id;
-    if (ex[id] && termOf(ex[id]) !== t) {
+    if ((ex[id] && termOf(ex[id]) !== t) || (!ex[id] && taken && taken.has(id))) {
       const base = termSlug(t) + "--" + s.id;
       id = base;
       let n = 2;
-      while (used.has(id) || (ex[id] && termOf(ex[id]) !== t)) id = base + "-" + n++;
+      while (used.has(id) || (ex[id] && termOf(ex[id]) !== t) || (!ex[id] && taken && taken.has(id))) id = base + "-" + n++;
     }
     used.add(id);
     idMap.set(s.id, id);

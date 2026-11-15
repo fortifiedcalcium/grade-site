@@ -22,6 +22,9 @@ create table if not exists public.sections (
   updated timestamptz not null default now()
 );
 
+-- who owns a section: only that instructor (and a "super" instructor) can see or change its students and scores
+alter table public.sections add column if not exists owner uuid default auth.uid() references auth.users (id) on delete set null;
+
 create table if not exists public.roster (
   student_id text primary key,
   name       text not null check (char_length(name) < 200),
@@ -59,10 +62,35 @@ create table if not exists public.admins (
   user_id uuid primary key references auth.users (id) on delete cascade
 );
 
+alter table public.admins add column if not exists is_super boolean not null default false;
+
 -- ---------------------------------------------------------------- helpers
 create or replace function public.is_admin() returns boolean
   language sql stable security definer set search_path = public as $$
   select exists (select 1 from public.admins where user_id = auth.uid())
+$$;
+
+-- A "super" instructor (set in the SQL editor, see the end of this file) can see and manage every section.
+create or replace function public.is_super() returns boolean
+  language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.admins where user_id = auth.uid() and is_super)
+$$;
+
+-- True when the caller is an instructor who owns section p_sec (or is a super instructor).
+create or replace function public.can_manage_section(p_sec text) returns boolean
+  language sql stable security definer set search_path = public as $$
+  select public.is_admin() and (
+    public.is_super()
+    or exists (select 1 from public.sections where id = p_sec and owner = auth.uid())
+  )
+$$;
+
+-- True when a roster row or record with this student number / key already belongs to a section the caller cannot
+-- manage. Security definer so it can see rows that row level security hides from the caller.
+create or replace function public.student_conflict(p_id text, p_key text) returns boolean
+  language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.roster ro where ro.student_id = p_id and not public.can_manage_section(ro.sec))
+      or exists (select 1 from public.records rc where rc.key = p_key and not public.can_manage_section(rc.sec))
 $$;
 
 -- ---------------------------------------------------------------- row level security
@@ -83,9 +111,11 @@ drop policy if exists admins_self    on public.admins;
 create policy meta_read      on public.meta     for select to anon, authenticated using (true);
 create policy meta_write     on public.meta     for all    to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy sections_read  on public.sections for select to anon, authenticated using (true);
-create policy sections_write on public.sections for all    to authenticated using (public.is_admin()) with check (public.is_admin());
-create policy roster_all     on public.roster   for all    to authenticated using (public.is_admin()) with check (public.is_admin());
-create policy records_all    on public.records  for all    to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy sections_write on public.sections for all    to authenticated
+  using (public.is_admin() and (owner = auth.uid() or public.is_super()))
+  with check (public.is_admin() and (owner = auth.uid() or public.is_super()));
+create policy roster_all     on public.roster   for all    to authenticated using (public.can_manage_section(sec)) with check (public.can_manage_section(sec));
+create policy records_all    on public.records  for all    to authenticated using (public.can_manage_section(sec)) with check (public.can_manage_section(sec));
 create policy admins_self    on public.admins   for select to authenticated using (user_id = auth.uid());
 
 -- table privileges: RLS above decides which rows; this decides which roles may touch the tables at all
@@ -144,7 +174,7 @@ begin
                   else jsonb_set(s, array[p_item], p_value, true) end,
          acknowledged = null,   -- the grade changed, so an earlier acknowledgment no longer applies
          updated = now()
-   where key = p_key;
+   where key = p_key and public.can_manage_section(sec);
 end $$;
 
 -- p_rows: [{ "id", "name", "sec", "pin", "key", "s" (optional) }]
@@ -152,6 +182,13 @@ create or replace function public.upsert_students(p_rows jsonb) returns void
   language plpgsql as $$
 begin
   perform public.require_admin();
+  if exists (select 1 from jsonb_array_elements(p_rows) r where not public.can_manage_section(r ->> 'sec')) then
+    raise exception 'not allowed: that section belongs to another instructor' using errcode = '42501';
+  end if;
+  -- never overwrite another instructor's student (student numbers are shared across the whole database)
+  if exists (select 1 from jsonb_array_elements(p_rows) r where public.student_conflict(r ->> 'id', r ->> 'key')) then
+    raise exception 'not allowed: that student number is already used by another instructor' using errcode = '42501';
+  end if;
   insert into public.roster (student_id, name, sec, pin, key)
     select r ->> 'id', r ->> 'name', r ->> 'sec', r ->> 'pin', r ->> 'key'
     from jsonb_array_elements(p_rows) r
@@ -171,6 +208,9 @@ create or replace function public.delete_students(p_rows jsonb) returns void
   language plpgsql as $$
 begin
   perform public.require_admin();
+  if exists (select 1 from jsonb_array_elements(p_rows) r where public.student_conflict(r ->> 'id', r ->> 'key')) then
+    raise exception 'not allowed' using errcode = '42501';
+  end if;
   delete from public.records where key in (select r ->> 'key' from jsonb_array_elements(p_rows) r);
   delete from public.roster  where student_id in (select r ->> 'id' from jsonb_array_elements(p_rows) r);
 end $$;
@@ -180,6 +220,9 @@ create or replace function public.reset_pin(p_id text, p_old_key text, p_new_key
   language plpgsql as $$
 begin
   perform public.require_admin();
+  if not coalesce(public.can_manage_section((select sec from public.roster where student_id = p_id)), false) then
+    raise exception 'not allowed' using errcode = '42501';
+  end if;
   update public.records set key = p_new_key, updated = now() where key = p_old_key;
   if not found then
     insert into public.records (key, student_id, name, sec)
@@ -197,7 +240,7 @@ begin
      set email = nullif(btrim(r ->> 'email'), ''),
          emailed = case when lower(coalesce(nullif(btrim(r ->> 'email'), ''), '')) = lower(coalesce(ro.email, '')) then ro.emailed else null end
     from jsonb_array_elements(p_rows) r
-   where ro.student_id = r ->> 'id';
+   where ro.student_id = r ->> 'id' and public.can_manage_section(ro.sec);
 end $$;
 
 -- p_ids: ["student number", ...]; called after the PIN email was sent
@@ -206,7 +249,7 @@ create or replace function public.mark_emailed(p_ids jsonb) returns void
 begin
   perform public.require_admin();
   update public.roster set emailed = now()
-   where student_id in (select jsonb_array_elements_text(p_ids));
+   where student_id in (select jsonb_array_elements_text(p_ids)) and public.can_manage_section(sec);
 end $$;
 
 -- Deletes a section together with its students and their scores. Returns how many students were removed.
@@ -215,6 +258,9 @@ create or replace function public.delete_section(p_id text) returns int
 declare n int;
 begin
   perform public.require_admin();
+  if not public.can_manage_section(p_id) then
+    raise exception 'not allowed' using errcode = '42501';
+  end if;
   delete from public.records where sec = p_id;
   delete from public.roster  where sec = p_id;
   get diagnostics n = row_count;
@@ -228,7 +274,8 @@ revoke execute on function
   public.delete_section(text), public.set_student_emails(jsonb), public.mark_emailed(jsonb)
   from public, anon, authenticated;
 grant execute on function public.get_record(text), public.get_records(text[]), public.acknowledge_grade(text) to anon, authenticated;
-grant execute on function public.is_admin() to authenticated;
+revoke execute on function public.is_super(), public.can_manage_section(text), public.student_conflict(text, text) from public, anon, authenticated;
+grant execute on function public.is_admin(), public.is_super(), public.can_manage_section(text), public.student_conflict(text, text) to authenticated;
 grant execute on function
   public.require_admin(), public.set_score(text, text, jsonb), public.upsert_students(jsonb),
   public.delete_students(jsonb), public.reset_pin(text, text, text, text), public.delete_section(text),
@@ -252,3 +299,10 @@ end $$;
 insert into public.admins (user_id)
   select id from auth.users where lower(email) = lower('aedgardominic@gmail.com')
 on conflict do nothing;
+
+-- Migration for data saved before sections had owners: this account becomes a super instructor and owns every
+-- section that has no owner yet. Other instructors (added to public.admins) then only see what they create.
+update public.admins set is_super = true
+  where user_id in (select id from auth.users where lower(email) = lower('aedgardominic@gmail.com'));
+update public.sections set owner = (select id from auth.users where lower(email) = lower('aedgardominic@gmail.com'))
+  where owner is null;
