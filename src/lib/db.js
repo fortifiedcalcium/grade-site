@@ -14,6 +14,7 @@
 
 import { recordKey, makePin, makeSalt, safeId, normId, studentNo, taggedRowId } from "./keys.js";
 import { DEFAULT_SCALE, DEFAULT_SCALE_NOTE } from "./grading.js";
+import { LEGACY_TERM, scopeToTerm, termOf } from "./terms.js";
 
 const clean = (obj) => JSON.parse(JSON.stringify(obj)); // drops undefined
 
@@ -181,6 +182,7 @@ export function mergeSection(existing, incoming) {
       code: (existing.subject && existing.subject.code) || incoming.subject.code,
       desc: (existing.subject && existing.subject.desc) || incoming.subject.desc,
     },
+    term: existing.term || incoming.term,
     instructor: existing.instructor || incoming.instructor,
     roomTime: existing.roomTime || incoming.roomTime,
     scheme: {
@@ -228,14 +230,15 @@ export function blankScheme() {
   };
 }
 
-export async function addSection(db, sections, name) {
+export async function addSection(db, sections, name, term) {
   const title = String(name || "").trim();
+  const sem = String(term || "").trim() || LEGACY_TERM;
   if (!title) throw new Error("Enter a section name.");
-  if (Object.values(sections || {}).some((x) => (x.name || "").toLowerCase() === title.toLowerCase())) throw new Error("A section with that name already exists.");
-  const base = slugId(title) || "section";
+  if (Object.values(sections || {}).some((x) => (x.name || "").toLowerCase() === title.toLowerCase() && termOf(x) === sem)) throw new Error("A section with that name already exists in " + sem + ".");
+  const base = slugId(sem + " " + title) || "section";
   let id = base, n = 2;
   while ((sections || {})[id]) id = base + "-" + n++;
-  await saveSection(db, id, { name: title, headings: [], subject: { code: "", desc: "" }, instructor: "", roomTime: "", scheme: blankScheme() });
+  await saveSection(db, id, { name: title, term: sem, headings: [], subject: { code: "", desc: "" }, instructor: "", roomTime: "", scheme: blankScheme() });
   return id;
 }
 
@@ -325,7 +328,8 @@ export async function resetPin(db, meta, id, entry) {
 }
 
 /* Writes imported sections and students. Students already in the roster keep their PIN. */
-export async function importData(db, parsed, { meta, sections, roster, details, removeMissing, onProgress }) {
+export async function importData(db, parsedIn, { meta, sections, roster, details, term, removeMissing, onProgress }) {
+  const parsed = scopeToTerm(parsedIn, term, sections);   // each semester keeps its own sections, students' scores and PINs
   const salt = (meta && meta.salt) || makeSalt();
   const rosterNow = roster || {};
   const now = new Date().toISOString();
@@ -371,7 +375,9 @@ export async function importData(db, parsed, { meta, sections, roster, details, 
 
   let removed = 0;
   if (removeMissing) {
-    const gone = Object.entries(rosterNow).filter(([id]) => !seen.has(id)).map(([id, ex]) => ({ id, key: ex.key }));
+    // only this semester's students can be "missing"; other semesters are never touched
+    const inTerm = (secId) => parsed.sections.some((x) => x.id === secId) || (sections && sections[secId] && termOf(sections[secId]) === parsed.sections[0].term);
+    const gone = Object.entries(rosterNow).filter(([id, r]) => !seen.has(id) && inTerm(r.sec)).map(([id, ex]) => ({ id, key: ex.key }));
     for (let i = 0; i < gone.length; i += 200) unwrap(await db.rpc("delete_students", { p_rows: gone.slice(i, i + 200) }));
     removed = gone.length;
   }

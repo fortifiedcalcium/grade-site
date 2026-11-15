@@ -1,6 +1,6 @@
 {
   "name": "grade-portal-react",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "description": "Students view their own grades; the teacher edits them. React + Supabase, hosted on Firebase Hosting.",

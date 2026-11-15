@@ -238,9 +238,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
                       </>
                     )}
                     <td>
-                      {r.ack
-                        ? <span className="ok" title={"Acknowledged " + new Date(r.ack).toLocaleString()}><Icon name="check" /> Ready for posting</span>
-                        : <span className="muted">Not yet acknowledged</span>}
+                      <span className="ok" title={r.ack ? "Acknowledged " + new Date(r.ack).toLocaleString() : undefined}><Icon name="check" /> Ready for posting</span>
                     </td>
                     <td><button className="btn small danger" disabled={busy} aria-label={"Delete " + r.name} onClick={() => remove(r)}><Icon name="trash" /> Delete</button></td>
                   </tr>

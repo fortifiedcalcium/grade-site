@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import Icon from "../../Icon.jsx";
+import { termOf, termsOf, LEGACY_TERM } from "../../lib/terms.js";
 import { addSection, clearSectionScores, deleteSection, newCategoryId, newItemKey, saveMeta, saveSection } from "../../lib/db.js";
 
-function SectionEditor({ db, id, section, roster }) {
+function SectionEditor({ db, id, section, roster, terms }) {
   const [s, setS] = useState(() => JSON.parse(JSON.stringify(section)));
   const [msg, setMsg] = useState("");
   const setCat = (ci, patch) => setS({ ...s, scheme: { ...s.scheme, categories: s.scheme.categories.map((c, i) => (i === ci ? { ...c, ...patch } : c)) } });
@@ -46,8 +47,9 @@ function SectionEditor({ db, id, section, roster }) {
   };
   return (
     <details className="card">
-      <summary><strong>{s.name}</strong></summary>
+      <summary><strong>{s.name}</strong> <span className="tag">{termOf(s)}</span></summary>
       <div className="form-grid">
+        <label><Icon name="calendar" /> Semester<input list="terms-list" value={s.term == null ? termOf(s) : s.term} onChange={(e) => setS({ ...s, term: e.target.value })} /></label>
         <label><Icon name="book" /> Subject code<input value={s.subject.code || ""} onChange={(e) => setS({ ...s, subject: { ...s.subject, code: e.target.value } })} /></label>
         <label><Icon name="book" /> Subject description<input value={s.subject.desc || ""} onChange={(e) => setS({ ...s, subject: { ...s.subject, desc: e.target.value } })} /></label>
         <label><Icon name="user" /> Instructor<input value={s.instructor || ""} onChange={(e) => setS({ ...s, instructor: e.target.value })} /></label>
@@ -97,6 +99,17 @@ export default function SettingsTab({ db, meta, sections, roster }) {
   const [msg, setMsg] = useState("");
   const [newName, setNewName] = useState("");
   const [secMsg, setSecMsg] = useState("");
+  const terms = termsOf(sections);
+  const [newTerm, setNewTerm] = useState(() => terms[0] || LEGACY_TERM);
+  const untagged = Object.entries(sections).filter(([, x]) => !String(x.term || "").trim());
+  const [tagMsg, setTagMsg] = useState("");
+  const tagAll = async () => {
+    setTagMsg("");
+    try {
+      for (const [sid, x] of untagged) await saveSection(db, sid, { ...x, term: LEGACY_TERM });
+      setTagMsg("Saved " + LEGACY_TERM + " on " + untagged.length + " section" + (untagged.length === 1 ? "" : "s") + ".");
+    } catch (err) { setTagMsg("Not saved: " + err.message); }
+  };
   const save = async (e) => {
     e.preventDefault();
     try { await saveMeta(db, m); setMsg("Saved."); } catch (err) { setMsg("Not saved: " + err.message); }
@@ -104,7 +117,7 @@ export default function SettingsTab({ db, meta, sections, roster }) {
   const createSection = async (e) => {
     e.preventDefault();
     setSecMsg("");
-    try { await addSection(db, sections, newName); setNewName(""); setSecMsg("Section added. Open it below to set its grading scheme."); } catch (err) { setSecMsg(err.message); }
+    try { await addSection(db, sections, newName, newTerm); setNewName(""); setSecMsg("Section added. Open it below to set its grading scheme."); } catch (err) { setSecMsg(err.message); }
   };
   return (
     <>
@@ -117,15 +130,37 @@ export default function SettingsTab({ db, meta, sections, roster }) {
         </div>
         <button className="btn primary"><Icon name="save" /> Save</button> {msg && <span className="small">{msg}</span>}
       </form>
+      <h2><Icon name="calendar" /> Semesters</h2>
+      <div className="card">
+        <p className="muted small">Every section belongs to one semester, and the Grades and Students screens show one semester at a time. New sections and imports go to the semester you choose, so earlier semesters are never overwritten.</p>
+        <table className="grid">
+          <thead><tr><th>Semester</th><th className="num">Sections</th><th className="num">Students</th></tr></thead>
+          <tbody>
+            {terms.map((t) => {
+              const ids = Object.keys(sections).filter((i) => termOf(sections[i]) === t);
+              return <tr key={t}><td>{t}</td><td className="num">{ids.length}</td><td className="num">{Object.values(roster).filter((r) => ids.includes(r.sec)).length}</td></tr>;
+            })}
+          </tbody>
+        </table>
+        {untagged.length > 0 && (
+          <p className="row">
+            <span className="small">{untagged.length} section{untagged.length === 1 ? "" : "s"} saved before semesters existed {untagged.length === 1 ? "is" : "are"} filed under {LEGACY_TERM}.</span>
+            <button type="button" className="btn small" onClick={tagAll}><Icon name="save" /> Save that on {untagged.length === 1 ? "it" : "them"}</button>
+            {tagMsg && <span className="small" role="status">{tagMsg}</span>}
+          </p>
+        )}
+      </div>
       <h2><Icon name="users" /> Sections</h2>
       <form className="card row" onSubmit={createSection}>
         <strong>Add a section</strong>
+        <input aria-label="Semester of the new section" list="terms-list" placeholder="Semester, e.g. 2026-2027 2nd Semester" value={newTerm} onChange={(e) => setNewTerm(e.target.value)} />
+        <datalist id="terms-list">{terms.map((t) => <option key={t} value={t} />)}</datalist>
         <input aria-label="New section name" placeholder="Section name, e.g. BSIT 3-A" value={newName} onChange={(e) => setNewName(e.target.value)} />
         <button className="btn primary"><Icon name="plus" /> Add section</button>
         {secMsg && <span className="small" role="status">{secMsg}</span>}
       </form>
       {Object.keys(sections).length === 0 && <p className="muted">No sections yet. Add one above or import a class record.</p>}
-      {Object.entries(sections).map(([id, sec]) => <SectionEditor key={id} db={db} id={id} section={sec} roster={roster} />)}
+      {Object.entries(sections).map(([id, sec]) => <SectionEditor key={id} db={db} id={id} section={sec} roster={roster} terms={terms} />)}
     </>
   );
 }

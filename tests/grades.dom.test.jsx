@@ -67,9 +67,9 @@ describe("clear all scores", () => {
 });
 
 describe("posting column", () => {
-  it("shows Ready for posting only for students who acknowledged", () => {
+  it("shows Ready for posting for every student", () => {
     mount();
-    expect(screen.getAllByText(/ready for posting/i).filter((e) => e.tagName === "SPAN")).toHaveLength(1);
-    expect(screen.getAllByText(/not yet acknowledged/i)).toHaveLength(2);
+    expect(screen.getAllByText(/ready for posting/i).filter((e) => e.tagName === "SPAN")).toHaveLength(3);
+    expect(screen.queryAllByText(/not yet acknowledged/i)).toHaveLength(0);
   });
 });

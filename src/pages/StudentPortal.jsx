@@ -5,6 +5,7 @@ import { createStudentApi } from "../lib/db.js";
 import { computeGrade, hasValue, isNum, usableScale } from "../lib/grading.js";
 import { fmt2, fmtNum, fmtDate } from "../lib/util.js";
 import { studentNo } from "../lib/keys.js";
+import { termOf } from "../lib/terms.js";
 
 const ERRORS = {
   nomatch: "We couldn't find a record with that student number and PIN. Check both and try again.",
@@ -34,14 +35,14 @@ export function GradeView({ data, onRefresh, onLogout, onAcknowledge, onSwitch =
           <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
           <div>
             <h1>{meta.title || "Student Grade Portal"}</h1>
-            <p className="muted small">{[record.name, studentNo(record.id)].filter(Boolean).join(" · ")}{meta.term ? " · " + meta.term : ""}</p>
+            <p className="muted small">{[record.name, studentNo(record.id)].filter(Boolean).join(" · ")}{section ? " · " + termOf(section) : meta.term ? " · " + meta.term : ""}</p>
           </div>
         </div>
         <div className="row">
           {data.others && data.others.length > 1 && (
             <label className="inline">Section
               <select value={data.key} disabled={busy} onChange={(e) => onSwitch(e.target.value)} aria-label="Section">
-                {data.others.map((o) => <option key={o.key} value={o.key}>{(o.section && o.section.subject && o.section.subject.code ? o.section.subject.code + " · " : "") + ((o.section && o.section.name) || o.record.sec)}</option>)}
+                {data.others.map((o) => <option key={o.key} value={o.key}>{(o.section && o.section.term ? o.section.term + " · " : "") + (o.section && o.section.subject && o.section.subject.code ? o.section.subject.code + " · " : "") + ((o.section && o.section.name) || o.record.sec)}</option>)}
               </select>
             </label>
           )}
@@ -61,6 +62,7 @@ export function GradeView({ data, onRefresh, onLogout, onAcknowledge, onSwitch =
             <h2><Icon name="user" size={20} /> {record.name}</h2>
             <dl className="facts">
               <div><dt>Student no.</dt><dd>{studentNo(record.id)}</dd></div>
+              {section && <div><dt>Semester</dt><dd>{termOf(section)}</dd></div>}
               <div><dt>Section</dt><dd>{(section && section.name) || record.sec}</dd></div>
               {section && section.subject && (section.subject.code || section.subject.desc) && (
                 <div><dt>Subject</dt><dd>{[section.subject.code, section.subject.desc].filter(Boolean).join(" – ")}</dd></div>

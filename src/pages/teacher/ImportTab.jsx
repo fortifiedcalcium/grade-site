@@ -2,11 +2,14 @@ import React, { useState } from "react";
 import Icon from "../../Icon.jsx";
 import { sheetsFromWorkbook, parseClassRecord } from "../../lib/importer.js";
 import { importData } from "../../lib/db.js";
+import { LEGACY_TERM, termsOf } from "../../lib/terms.js";
 
 export default function ImportTab({ db, meta, sections, roster }) {
   const [parsed, setParsed] = useState(null);
   const [fileName, setFileName] = useState("");
   const [details, setDetails] = useState({ title: meta.title || "", term: meta.term || "", note: meta.note || "" });
+  const knownTerms = termsOf(sections);
+  const [term, setTerm] = useState(() => knownTerms[0] || LEGACY_TERM);
   const [removeMissing, setRemoveMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -31,7 +34,7 @@ export default function ImportTab({ db, meta, sections, roster }) {
   const run = async () => {
     setBusy(true); setError(""); setProgress(0);
     try {
-      setResult(await importData(db, parsed, { meta, sections, roster, details, removeMissing, onProgress: setProgress }));
+      setResult(await importData(db, parsed, { meta, sections, roster, details, term, removeMissing, onProgress: setProgress }));
       setParsed(null);
     } catch (err) {
       setError("Import failed: " + (err.message || "unknown error"));
@@ -45,7 +48,7 @@ export default function ImportTab({ db, meta, sections, roster }) {
       <div className="card">
         <h2><Icon name="import" /> Import class record (.xlsx)</h2>
         <p className="muted">
-          Reads every visible sheet of your class record. Scores in the file replace the scores in the database for the same students.
+          Reads every visible sheet of your class record into the semester you choose below; earlier semesters are left untouched. Scores in the file replace the scores in the database for the same students.
           Existing students keep their PINs; new students get a new PIN.
         </p>
         <input type="file" accept=".xlsx,.xlsm,.xls,.csv" onChange={onFile} disabled={busy} />
@@ -81,10 +84,13 @@ export default function ImportTab({ db, meta, sections, roster }) {
           )}
           <div className="form-grid">
             <label><Icon name="tag" /> Page title<input value={details.title} onChange={(e) => setDetails({ ...details, title: e.target.value })} /></label>
-            <label><Icon name="calendar" /> Term<input value={details.term} onChange={(e) => setDetails({ ...details, term: e.target.value })} /></label>
+            <label><Icon name="calendar" /> Semester of these sections<input list="import-terms" value={term} onChange={(e) => setTerm(e.target.value)} />
+              <datalist id="import-terms">{knownTerms.map((t) => <option key={t} value={t} />)}</datalist>
+            </label>
+            <label><Icon name="calendar" /> Term shown to students<input value={details.term} onChange={(e) => setDetails({ ...details, term: e.target.value })} /></label>
             <label className="span2"><Icon name="note" /> Note shown to students<input value={details.note} onChange={(e) => setDetails({ ...details, note: e.target.value })} /></label>
           </div>
-          <label className="inline"><input type="checkbox" checked={removeMissing} onChange={(e) => setRemoveMissing(e.target.checked)} /> Delete students that are in the database but not in this file</label>
+          <label className="inline"><input type="checkbox" checked={removeMissing} onChange={(e) => setRemoveMissing(e.target.checked)} /> Delete students of this semester that are in the database but not in this file</label>
           <p><button className="btn primary" onClick={run} disabled={busy}><Icon name="import" /> {busy ? "Importing… " + progress + "/" + parsed.students.length : "Import " + parsed.students.length + " students"}</button></p>
         </div>
       )}

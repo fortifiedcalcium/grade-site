@@ -113,7 +113,7 @@ export default function PinsTab({ db, meta, sections, roster, user }) {
         )}
       </div>
       {msg && <div className="banner info" role="status"><Icon name="info" /> {msg}</div>}
-      {emailing && <EmailPanel db={db} user={user} roster={roster} sections={sections} activeId={activeId} selectedIds={sel.selected} onClose={() => setEmailing(false)} />}
+      {emailing && <EmailPanel db={db} user={user} roster={roster} sections={sections} activeId={activeId} termIds={picker.allIds} term={picker.showTerm ? picker.term : ""} selectedIds={sel.selected} onClose={() => setEmailing(false)} />}
       <div className="card flush">
         <div className="scroll tall">
           <table className="grid">

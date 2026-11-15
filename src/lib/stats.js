@@ -76,7 +76,7 @@ export function statusOf(g) {
 
 /* graded rows -> filtered by status and sorted. Pending students sort last when sorting by grade. */
 export function filterAndSort(graded, status, sort) {
-  const rows = graded.filter((x) => status === "all" || (status === "ready" ? Boolean(x.ack) : statusOf(x.g) === status));
+  const rows = graded.filter((x) => status === "all" || (status === "ready" ? true : statusOf(x.g) === status));
   const byName = (a, b) => a.name.localeCompare(b.name);
   const cmp = {
     name: byName,

@@ -33,8 +33,8 @@ describe("report data", () => {
   it("has one row per student with weighted points, final, equivalent and remarks", () => {
     const r = buildReport({ sec, meta, students: students(3), now });
     expect(r.columns.map((c) => c.label)).toEqual(["No.", "Name", "Quizzes (60%)", "Final Exam (40%)", "Final", "Eq.", "Remarks", "Posting"]);
-    expect(r.rows[0]).toEqual(["2026-10000", "PEÑA, ÑOR", "51.00", "36.00", "87.00", "2.00", "Passed", "Not yet"]);
-    expect(r.rows[1].slice(-4)).toEqual(["—", "—", "Pending", "Not yet"]);
+    expect(r.rows[0]).toEqual(["2026-10000", "PEÑA, ÑOR", "51.00", "36.00", "87.00", "2.00", "Passed", "Ready"]);
+    expect(r.rows[1].slice(-4)).toEqual(["—", "—", "Pending", "Ready"]);
     expect(r.summary).toBe("Passed: 2   Failed: 0   Pending: 1");
     expect(r.info).toContainEqual(["Date generated", "October 31, 2026"]);
   });

@@ -87,8 +87,8 @@ describe("report with a view", () => {
   it("with one category shown it lists each score of that category and its statistics", () => {
     const r = build({ hiddenCats: ["quiz", "final"], showFinal: false, filterNote: "Columns: Activities" });
     expect(r.columns.map((c) => c.label)).toEqual(["No.", "Name", "Act 1 (/10)", "Act 2 (/10)", "Posting"]);
-    expect(r.rows[0]).toEqual(["S1", "ANA", "10", "8", "Not yet"]);
-    expect(r.rows[1]).toEqual(["S2", "BEN", "6", "", "Not yet"]);
+    expect(r.rows[0]).toEqual(["S1", "ANA", "10", "8", "Ready"]);
+    expect(r.rows[1]).toEqual(["S2", "BEN", "6", "", "Ready"]);
     const stat = Object.fromEntries(r.rows.slice(4).map((row) => [row[1], row.slice(2, -1)]));
     expect(stat.Highest).toEqual(["10.00", "9.00"]);
     expect(stat.Lowest).toEqual(["6.00", "8.00"]);

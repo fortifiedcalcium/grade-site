@@ -9,7 +9,7 @@ const loadTemplate = () => {
 const storeTemplate = (t) => { try { window.localStorage.setItem(KEY, JSON.stringify(t)); } catch { /* storage blocked */ } };
 
 /* Email PINs to students from the app. Sends through the send-pins Edge Function (see README). */
-export default function EmailPanel({ db, user, roster, sections, activeId, selectedIds, onClose }) {
+export default function EmailPanel({ db, user, roster, sections, activeId, selectedIds, termIds, term, onClose }) {
   const [t, setT] = useState(loadTemplate);
   const [scope, setScope] = useState(selectedIds.length ? "selected" : "section");
   const [onlyUnsent, setOnlyUnsent] = useState(true);
@@ -23,8 +23,8 @@ export default function EmailPanel({ db, user, roster, sections, activeId, selec
     const all = Object.entries(roster).sort((a, b) => (a[1].sec + a[1].name).localeCompare(b[1].sec + b[1].name)).map(([id]) => id);
     if (scope === "selected") return all.filter((id) => selectedIds.includes(id));
     if (scope === "section") return all.filter((id) => roster[id].sec === activeId);
-    return all;
-  }, [roster, scope, activeId, selectedIds]);
+    return termIds ? all.filter((id) => termIds.includes(roster[id].sec)) : all;
+  }, [roster, scope, activeId, selectedIds, termIds]);
 
   const plan = useMemo(() => buildPlan({ roster, sections, ids, template: t, link, onlyUnsent }), [roster, sections, ids, t, link, onlyUnsent]);
   const noEmail = plan.skipped.filter((s) => s.reason === "no valid email").length;
@@ -44,7 +44,7 @@ export default function EmailPanel({ db, user, roster, sections, activeId, selec
     if (plan.unknown.length) throw new Error("Unknown placeholder" + (plan.unknown.length > 1 ? "s" : "") + ": " + plan.unknown.map((n) => "{{" + n + "}}").join(", ") + ". Nothing was sent.");
     if (!plan.ready.length) throw new Error("Nobody to email. Add emails first, or untick 'only students not emailed yet'.");
     const names = plan.ready.slice(0, 8).map((m) => "  " + (roster[m.id] ? roster[m.id].name : m.id) + " <" + m.to + ">");
-    const scopeName = scope === "selected" ? "the selected students" : scope === "section" ? "section " + ((sections[activeId] && sections[activeId].name) || activeId) : "all sections";
+    const scopeName = scope === "selected" ? "the selected students" : scope === "section" ? "section " + ((sections[activeId] && sections[activeId].name) || activeId) : (term ? "all sections in " + term : "all sections");
     const already = plan.skipped.filter((x) => x.reason === "already emailed").length;
     if (!window.confirm(
       "Email " + plan.ready.length + " student" + (plan.ready.length === 1 ? "" : "s") + " their PIN now?\n\n" +
@@ -79,7 +79,7 @@ export default function EmailPanel({ db, user, roster, sections, activeId, selec
           <select value={scope} onChange={(e) => setScope(e.target.value)}>
             {selectedIds.length > 0 && <option value="selected">Selected students ({selectedIds.length})</option>}
             <option value="section">This section</option>
-            <option value="all">All sections</option>
+            <option value="all">{term ? "All sections in " + term : "All sections"}</option>
           </select>
         </label>
         <label className="inline"><input type="checkbox" checked={onlyUnsent} onChange={(e) => setOnlyUnsent(e.target.checked)} /> Only students not emailed yet</label>
