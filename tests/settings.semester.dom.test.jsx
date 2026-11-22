@@ -7,8 +7,8 @@ import SettingsTab from "../src/pages/teacher/SettingsTab.jsx";
 beforeEach(() => { cleanup(); window.sessionStorage.clear(); });
 
 const scheme = { categories: [], scale: [], passEquiv: 3 };
-const sec = (name, term) => ({ name, term, subject: { code: "", desc: "" }, scheme });
-const sections = { a: sec("BSIT 3-A", "2026-2027 2nd Semester"), b: sec("BSIT 3-B", "2026-2027 1st Semester"), c: sec("BSIT 3-C", "2026-2027 1st Semester") };
+const sec = (name, term, code = "") => ({ name, term, subject: { code, desc: code ? code + " course" : "" }, scheme });
+const sections = { a: sec("BSIT 3-A", "2026-2027 2nd Semester"), b: sec("BSIT 3-B", "2026-2027 1st Semester", "IT 303"), c: sec("BSIT 3-C", "2026-2027 1st Semester", "IT 304") };
 const mount = () => render(<SettingsTab db={{}} meta={{}} sections={sections} roster={{}} takenIds={new Set()} />);
 const listed = () => ["BSIT 3-A", "BSIT 3-B", "BSIT 3-C"].filter((n) => screen.queryByText(n, { selector: "summary strong" }));
 
@@ -32,6 +32,18 @@ describe("Settings sections by semester", () => {
     expect(listed()).toEqual(["BSIT 3-C"]);
     fireEvent.change(screen.getByLabelText("Show sections of semester"), { target: { value: "2026-2027 2nd Semester" } });   // changing semester goes back to all of its sections
     expect(listed()).toEqual(["BSIT 3-A"]);
+  });
+  it("groups the sections of a semester under their subject and narrows by subject", () => {
+    mount();
+    fireEvent.change(screen.getByLabelText("Show sections of semester"), { target: { value: "2026-2027 1st Semester" } });
+    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"))).toEqual(["IT 303 – IT 303 course", "IT 304 – IT 304 course"]);
+    const subject = screen.getByLabelText("Show subject");
+    expect([...subject.options].map((o) => o.value)).toEqual(["", "IT 303", "IT 304"]);
+    fireEvent.change(subject, { target: { value: "IT 304" } });
+    expect(listed()).toEqual(["BSIT 3-C"]);
+    expect([...screen.getByLabelText("Show section").options].map((o) => o.textContent)).toEqual(["All sections (1)", "BSIT 3-C"]);
+    fireEvent.change(screen.getByLabelText("Show sections of semester"), { target: { value: "__all" } });   // new semester choice starts over
+    expect(listed()).toEqual(["BSIT 3-A", "BSIT 3-B", "BSIT 3-C"]);
   });
   it("starts on the semester picked on another tab", () => {
     window.sessionStorage.setItem("term-filter", "2026-2027 1st Semester");

@@ -2,10 +2,11 @@ import React, { useState } from "react";
 import Icon from "../../Icon.jsx";
 import { termOf, termsOf, LEGACY_TERM } from "../../lib/terms.js";
 import TermSelect from "../../lib/TermSelect.jsx";
-import { recalledTerm, rememberTerm } from "../../lib/sectionPicker.jsx";
+import { codeOf, recalledTerm, rememberTerm } from "../../lib/sectionPicker.jsx";
 import { addSection, clearSectionScores, deleteSection, newCategoryId, newItemKey, saveMeta, saveSection } from "../../lib/db.js";
 
 const ALL = "__all";
+const NO_CODE = "__none";
 
 function SectionEditor({ db, id, section, roster, terms }) {
   const [s, setS] = useState(() => JSON.parse(JSON.stringify(section)));
@@ -51,7 +52,7 @@ function SectionEditor({ db, id, section, roster, terms }) {
   };
   return (
     <details className="card">
-      <summary><strong>{s.name}</strong> <span className="tag">{termOf(s)}</span></summary>
+      <summary><strong>{s.name}</strong> {codeOf(section) && <span className="tag">{codeOf(section)}</span>} <span className="tag">{termOf(s)}</span></summary>
       <div className="form-grid">
         <label><Icon name="calendar" /> Semester<TermSelect value={s.term == null ? termOf(s) : s.term} known={terms} onChange={(v) => setS({ ...s, term: v })} /></label>
         <label><Icon name="book" /> Subject code<input value={s.subject.code || ""} onChange={(e) => setS({ ...s, subject: { ...s.subject, code: e.target.value } })} /></label>
@@ -110,12 +111,21 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
   // which semester's sections are listed below ("" = every semester); starts on the newest, or the one picked on another tab
   const [showTermPick, setShowTerm] = useState(() => (terms.includes(recalledTerm()) ? recalledTerm() : terms[0] || ""));
   const showTerm = showTermPick === ALL || terms.includes(showTermPick) ? showTermPick : terms[0] || ALL;
-  const pickShown = (t) => { setShowTerm(t); setSecPick(""); if (t !== ALL) rememberTerm(t); };
-  const inTerm = Object.keys(sections).filter((id) => showTerm === ALL || termOf(sections[id]) === showTerm)
-    .sort((a, b) => String(sections[a].name || a).localeCompare(String(sections[b].name || b), undefined, { numeric: true }));
-  const [secPick, setSecPick] = useState("");   // "" = every section of the semester
-  const oneSection = inTerm.includes(secPick) ? secPick : "";
-  const shownIds = oneSection ? [oneSection] : inTerm;
+  const pickShown = (t) => { setShowTerm(t); setSubjPick(""); setSecPick(""); if (t !== ALL) rememberTerm(t); };
+  // semester -> subject -> section: each choice narrows the next one
+  const byName = (a, b) => String(sections[a].name || a).localeCompare(String(sections[b].name || b), undefined, { numeric: true });
+  const inTerm = Object.keys(sections).filter((id) => showTerm === ALL || termOf(sections[id]) === showTerm).sort(byName);
+  const subjectKey = (id) => codeOf(sections[id]) || NO_CODE;
+  const subjects = [...new Set(inTerm.map(subjectKey))].sort((a, b) => (a === NO_CODE) - (b === NO_CODE) || a.localeCompare(b, undefined, { numeric: true }));
+  const subjDesc = (code) => { const id = inTerm.find((i) => subjectKey(i) === code); return (id && sections[id].subject && sections[id].subject.desc) || ""; };
+  const subjName = (code) => (code === NO_CODE ? "No subject code" : subjDesc(code) ? code + " – " + subjDesc(code) : code);
+  const [subjPick, setSubjPick] = useState("");   // "" = every subject of the semester
+  const subject = subjects.includes(subjPick) ? subjPick : "";
+  const inSubject = inTerm.filter((id) => !subject || subjectKey(id) === subject);
+  const [secPick, setSecPick] = useState("");   // "" = every section of the subject
+  const oneSection = inSubject.includes(secPick) ? secPick : "";
+  const shownIds = oneSection ? [oneSection] : inSubject;
+  const groups = subjects.map((code) => [code, shownIds.filter((id) => subjectKey(id) === code)]).filter(([, ids]) => ids.length);
   const tagAll = async () => {
     setTagMsg("");
     try {
@@ -180,16 +190,27 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
               <option value={ALL}>All semesters</option>
             </select>
           </label>
+          <label className="inline"><Icon name="book" /> Subject
+            <select value={subject} onChange={(e) => { setSubjPick(e.target.value); setSecPick(""); }} aria-label="Show subject">
+              <option value="">{"All subjects (" + subjects.length + ")"}</option>
+              {subjects.map((c) => <option key={c} value={c}>{subjName(c)}</option>)}
+            </select>
+          </label>
           <label className="inline"><Icon name="users" /> Section
             <select value={oneSection} onChange={(e) => setSecPick(e.target.value)} aria-label="Show section">
-              <option value="">{"All sections (" + inTerm.length + ")"}</option>
-              {inTerm.map((id) => <option key={id} value={id}>{sections[id].name || id}</option>)}
+              <option value="">{"All sections (" + inSubject.length + ")"}</option>
+              {inSubject.map((id) => <option key={id} value={id}>{sections[id].name || id}</option>)}
             </select>
           </label>
           <span className="muted small">Showing {shownIds.length} of {Object.keys(sections).length} section{Object.keys(sections).length === 1 ? "" : "s"}</span>
         </div>
       )}
-      {shownIds.map((id) => <SectionEditor key={id} db={db} id={id} section={sections[id]} roster={roster} terms={terms} />)}
+      {groups.map(([code, ids]) => (
+        <section key={code} aria-label={subjName(code)}>
+          <h3 className="subject-head"><Icon name="book" /> {subjName(code)} <span className="muted small">· {ids.length} section{ids.length === 1 ? "" : "s"}{showTerm === ALL ? "" : " in " + showTerm}</span></h3>
+          {ids.map((id) => <SectionEditor key={id} db={db} id={id} section={sections[id]} roster={roster} terms={terms} />)}
+        </section>
+      ))}
     </>
   );
 }

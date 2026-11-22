@@ -264,3 +264,5 @@ input.cell.over { border-color: var(--danger); border-width: var(--bw); } input.
 .review-item p { margin: 4px 0; }
 .pick { display: inline-block; margin: 2px 8px 2px 0; padding: 0 6px; border: var(--bw-s) solid var(--ink); background: var(--surface); }
 .pick.ok { background: var(--success); color: var(--on-bright); }
+.subject-head { margin: 18px 0 8px; padding: 6px 10px; background: var(--info); color: var(--on-bright); border: var(--bw-s) solid var(--ink); box-shadow: var(--shadow-s); font-size: 1rem; text-transform: uppercase; }
+.subject-head .muted { color: var(--on-bright); text-transform: none; }
