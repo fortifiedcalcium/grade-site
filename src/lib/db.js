@@ -1,16 +1,17 @@
 /* All reads and writes to the Supabase (Postgres) database. The tables and the access rules are in
    supabase/schema.sql.
 
-   Data layout
-     meta                 page title, term, note, secret salt          (anyone can read)
-     sections/<id>        section details + grading scheme             (anyone can read)
-     records/<key>        one student's scores; <key> comes from student number + PIN
-                          (a student can fetch ONE record if they know the key; nobody can list them)
-     roster/<studentId>   name, section, PIN and key                   (instructors only)
-     admins               user ids of instructor accounts              (added by hand in the SQL editor)
+   Data layout (each fact is stored once)
+     meta           page title, term, note, secret salt                     (anyone can read)
+     subjects       code + description                                       (anyone can read)
+     sections       one class: name, semester, subject, grading scheme       (anyone can read)
+     students       student number + name + email                            (instructors only)
+     enrollments    one student in one section: PIN, secret key, scores      (instructors only; a student can fetch ONE
+                    by its key, nobody can list them)
+     admins         user ids of instructor accounts                          (added by hand in the SQL editor)
 
-   The screens work with plain objects shaped like this (maps keyed by id), so each table's rows are
-   converted on the way in. Times are milliseconds since 1970. */
+   The screens work with plain objects shaped like the old roster / records / sections tables (maps keyed by id), so the
+   rows of the joined tables are converted on the way in. Times are milliseconds since 1970. */
 
 import { recordKey, makePin, makeSalt, safeId, normId, studentNo, taggedRowId } from "./keys.js";
 import { DEFAULT_SCALE, DEFAULT_SCALE_NOTE } from "./grading.js";
@@ -33,7 +34,18 @@ const unwrap = ({ data, error }) => {
 };
 
 const toMeta = (r) => (r ? { title: r.title, term: r.term, note: r.note, salt: r.salt, updated: ms(r.updated) } : null);
-const toSections = (rows) => Object.fromEntries((rows || []).map((r) => [r.id, r.data]));
+/* A sections row (with its subject joined in) -> the object the screens use. An empty semester stays out, so the section counts as the first one. */
+export const SECTION_SELECT = "*, subjects(description)";
+export const toSection = (r) => ({
+  name: r.name,
+  ...(r.term ? { term: r.term } : {}),
+  headings: r.headings || [],
+  subject: { code: r.subject_code || "", desc: (r.subjects && r.subjects.description) || "" },
+  instructor: r.instructor || "",
+  roomTime: r.room_time || "",
+  scheme: r.scheme && Object.keys(r.scheme).length ? r.scheme : undefined,
+});
+const toSections = (rows) => Object.fromEntries((rows || []).map((r) => [r.id, toSection(r)]));
 
 /* ---------------------------- student side ---------------------------- */
 
@@ -41,7 +53,7 @@ export function createStudentApi(db) {
   const fetchPublic = async () => {
     const [m, s] = await Promise.all([
       db.from("meta").select("*").eq("id", 1).maybeSingle(),
-      db.from("sections").select("id, data"),
+      db.from("sections").select(SECTION_SELECT),
     ]);
     return { meta: toMeta(unwrap(m)), sections: toSections(unwrap(s)) };
   };
@@ -103,17 +115,24 @@ export function createStudentApi(db) {
 
 /* ---------------------------- teacher side ---------------------------- */
 
+/* `reload` sources join several tables, so a realtime event cannot be patched into the copy in memory: the table is read again
+   instead. `also` lists other tables whose changes matter too. */
+const enrollmentSelect = "*, students(name, email)";
+const nameOf = (r) => (r.students && r.students.name) || "";
 const SOURCES = {
   meta: { table: "meta", pk: "id", shape: (rows) => toMeta([...rows.values()][0]) },
   // the owner (an instructor's user id) rides along so the screens can show only the signed-in instructor's sections
-  sections: { table: "sections", pk: "id", shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.id, { ...r.data, owner: r.owner || null }])) },
+  sections: {
+    table: "sections", select: SECTION_SELECT, also: ["subjects"], reload: true, pk: "id",
+    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.id, { ...toSection(r), owner: r.owner || null }])),
+  },
   roster: {
-    table: "roster", pk: "student_id",
-    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.student_id, { name: r.name, sec: r.sec, pin: r.pin, key: r.key, email: r.email || "", emailed: ms(r.emailed) }])),
+    table: "enrollments", select: enrollmentSelect, also: ["students"], reload: true, pk: "login_id",
+    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.login_id, { name: nameOf(r), sec: r.sec, pin: r.pin, key: r.key, email: (r.students && r.students.email) || "", emailed: ms(r.emailed) }])),
   },
   records: {
-    table: "records", pk: "key",
-    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.key, { id: r.student_id, name: r.name, sec: r.sec, s: r.s || {}, updated: ms(r.updated), ack: ms(r.acknowledged) }])),
+    table: "enrollments", select: enrollmentSelect, also: ["students"], reload: true, pk: "key",
+    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.key, { id: r.login_id, name: nameOf(r), sec: r.sec, s: r.scores || {}, updated: ms(r.updated), ack: ms(r.acknowledged) }])),
   },
 };
 
@@ -126,9 +145,9 @@ SOURCES.quizzes = {
   }])),
 };
 SOURCES.attempts = {
-  table: "quiz_attempts", pk: ["quiz_id", "key"],
+  table: "quiz_attempts", select: "*, enrollments(login_id, students(name))", reload: true, pk: ["quiz_id", "key"],
   shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.quiz_id + "|" + r.key, {
-    quizId: r.quiz_id, key: r.key, sec: r.sec, id: r.student_id, name: r.name, started: ms(r.started), submitted: ms(r.submitted),
+    quizId: r.quiz_id, key: r.key, id: (r.enrollments && r.enrollments.login_id) || "", name: (r.enrollments && r.enrollments.students && r.enrollments.students.name) || "", started: ms(r.started), submitted: ms(r.submitted),
     points: r.points == null ? null : Number(r.points), total: r.total == null ? null : Number(r.total),
     violations: r.violations || 0, events: r.events || [], late: Boolean(r.late), answers: r.answers || null,
   }])),
@@ -136,38 +155,42 @@ SOURCES.attempts = {
 
 const POLL_MS = 30000;
 
-/* Calls onValueCb with the whole table now and again whenever it changes. Realtime events patch the
-   copy in memory; a slow refresh is a safety net in case realtime is off or the connection drops.
+/* Calls onValueCb with the whole table now and again whenever it changes. Realtime events patch the copy in memory (or, for
+   tables joined with others, read it again); a slow refresh is a safety net in case realtime is off or the connection drops.
    Returns a function that stops listening. */
 export function listen(db, path, onValueCb, onError) {
   const src = SOURCES[path];
   let rows = new Map();
   let alive = true;
+  let timer = null;
   const pkOf = (r) => (Array.isArray(src.pk) ? src.pk.map((c) => r[c]).join("|") : r[src.pk]);
   const emit = () => alive && onValueCb(src.shape(rows));
 
   const load = async () => {
-    const { data, error } = await db.from(src.table).select("*");
+    const { data, error } = await db.from(src.table).select(src.select || "*");
     if (!alive) return;
     if (error) return onError && onError(error);
     rows = new Map(data.map((r) => [pkOf(r), r]));
     emit();
   };
+  const reloadSoon = () => { clearTimeout(timer); timer = setTimeout(load, 200); };   // several events in a row are one read
 
-  const channel = db
-    .channel("rt-" + path + "-" + Math.random().toString(36).slice(2))
-    .on("postgres_changes", { event: "*", schema: "public", table: src.table }, (p) => {
-      if (p.eventType === "DELETE") rows.delete(pkOf(p.old));
-      else rows.set(pkOf(p.new), p.new);
-      emit();
-    })
-    .subscribe((status) => { if (status === "SUBSCRIBED") load(); });
+  let channel = db.channel("rt-" + path + "-" + Math.random().toString(36).slice(2));
+  channel = channel.on("postgres_changes", { event: "*", schema: "public", table: src.table }, (p) => {
+    if (src.reload) return reloadSoon();
+    if (p.eventType === "DELETE") rows.delete(pkOf(p.old));
+    else rows.set(pkOf(p.new), p.new);
+    emit();
+  });
+  (src.also || []).forEach((table) => { channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, reloadSoon); });
+  channel.subscribe((status) => { if (status === "SUBSCRIBED") load(); });
 
   load();
-  const timer = setInterval(load, POLL_MS);
+  const poll = setInterval(load, POLL_MS);
   return () => {
     alive = false;
-    clearInterval(timer);
+    clearInterval(poll);
+    clearTimeout(timer);
     db.removeChannel(channel);
   };
 }
@@ -192,9 +215,14 @@ export async function saveMeta(db, { title, term, note }) {
   unwrap(await db.from("meta").upsert({ id: 1, title: title || "", term: term || "", note: note || "", updated: new Date().toISOString() }));
 }
 
-export async function saveSection(db, id, section) {
+/* The fields the save_sections function stores (the section's own columns, its subject and its grading scheme). */
+const sectionRow = (id, section) => {
   const { count, owner, ...rest } = section; // eslint-disable-line no-unused-vars
-  unwrap(await db.from("sections").upsert({ id, data: clean(rest), updated: new Date().toISOString() }));
+  return clean({ id, ...rest });
+};
+
+export async function saveSection(db, id, section) {
+  unwrap(await db.rpc("save_sections", { p_rows: [sectionRow(id, section)] }));
 }
 
 /* Settings the teacher edited in the app win over what the workbook says. */
@@ -310,16 +338,24 @@ export function resolveRow(roster, no, sec, rowsTaken) {
   return { id, existing: null, pin: sibling ? sibling[1].pin : null };
 }
 
+/* Row ids (see keys.js) that already belong to another instructor's section. The same student can be taught by two instructors:
+   the student's number and name are shared, but the second instructor's enrollment gets its own row id, PIN and scores. */
+export async function takenLoginIds(db, ids) {
+  if (!ids.length) return new Set();
+  return new Set(unwrap(await db.rpc("taken_login_ids", { p_ids: ids })) || []);
+}
+
 export async function addStudent(db, meta, { id, name, sec }, roster) {
   const no = safeId(id);
   if (!no || !name.trim()) throw new Error("Enter a student number and a name.");
   const row = resolveRow(roster, no, sec);
   if (row.existing) throw new Error("Student " + no + " is already in this section.");
+  const rowId = (await takenLoginIds(db, [row.id])).has(row.id) ? taggedRowId(no, sec) : row.id;   // already enrolled by another instructor
   const salt = await ensureSalt(db, meta);
   const pin = row.pin || makePin();
-  const key = await recordKey(salt, row.id, pin);
-  unwrap(await db.rpc("upsert_students", { p_rows: [{ id: row.id, name: name.trim(), sec, pin, key }] }));
-  return { id: row.id, no, pin };
+  const key = await recordKey(salt, rowId, pin);
+  unwrap(await db.rpc("upsert_students", { p_rows: [{ id: rowId, name: name.trim(), sec, pin, key }] }));
+  return { id: rowId, no, pin };
 }
 
 export async function removeStudent(db, id, key) {
@@ -385,21 +421,19 @@ export async function importData(db, parsedIn, { meta, sections, roster, details
 
   unwrap(await db.from("meta").upsert({ id: 1, salt, title: details.title || "", term: details.term || "", note: details.note || "", updated: now }));
 
-  const sectionRows = parsed.sections.map((sec) => {
-    const merged = mergeSection((sections || {})[sec.id], sec);
-    const { count, owner, ...rest } = merged; // eslint-disable-line no-unused-vars
-    return { id: sec.id, data: clean(rest), updated: now };
-  });
-  if (sectionRows.length) unwrap(await db.from("sections").upsert(sectionRows));
+  const sectionRows = parsed.sections.map((sec) => sectionRow(sec.id, mergeSection((sections || {})[sec.id], sec)));
+  if (sectionRows.length) unwrap(await db.rpc("save_sections", { p_rows: sectionRows }));
 
   let created = 0, kept = 0;
   const seen = new Set();
   const rows = [];
   const live = { ...rosterNow };   // roster plus the rows made so far in this import
   const takenNo = new Set();       // student numbers already placed in this import (the next section's row is tagged)
+  const foreign = await takenLoginIds(db, [...new Set(parsed.students.map((st) => safeId(st.id)))]);   // plain row ids another instructor already uses
   for (let i = 0; i < parsed.students.length; i++) {
     const st = parsed.students[i];
-    const r = resolveRow(live, st.id, st.sec, takenNo);
+    let r = resolveRow(live, st.id, st.sec, takenNo);
+    if (!r.existing && foreign.has(r.id)) r = { ...r, id: taggedRowId(safeId(st.id), st.sec) };   // same student, another instructor's section
     let pin, key;
     if (r.existing && r.existing.key && r.existing.pin) {
       pin = r.existing.pin;

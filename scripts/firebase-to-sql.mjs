@@ -34,30 +34,42 @@ lines.push(
   "on conflict (id) do update set title = excluded.title, term = excluded.term, note = excluded.note, salt = excluded.salt, updated = excluded.updated;"
 );
 
+const str = (v) => (v == null ? "" : String(v));
+const code = (sec) => str(sec.subject && sec.subject.code).trim();
+const studentNo = (rowId) => String(rowId).split("@")[0];
+
+// subjects first (one row per code), then the sections that point at them
+const subjects = new Map();
+for (const sec of Object.values(sections)) if (code(sec) && !subjects.has(code(sec))) subjects.set(code(sec), str(sec.subject.desc));
+for (const [c, d] of subjects) lines.push(`insert into public.subjects (code, description) values (${lit(c)}, ${lit(d)}) on conflict (code) do update set description = excluded.description;`);
 for (const [id, sec] of Object.entries(sections)) {
   lines.push(
-    `insert into public.sections (id, data) values (${lit(id)}, ${json(sec)}) on conflict (id) do update set data = excluded.data, updated = now();`
+    "insert into public.sections (id, name, term, subject_code, instructor, room_time, headings, scheme) values " +
+      `(${lit(id)}, ${lit(sec.name || id)}, ${lit(str(sec.term))}, ${code(sec) ? lit(code(sec)) : "null"}, ${lit(str(sec.instructor))}, ${lit(str(sec.roomTime))}, ${json(sec.headings || [])}, ${json(sec.scheme || {})}) ` +
+      "on conflict (id) do update set name = excluded.name, term = excluded.term, subject_code = excluded.subject_code, instructor = excluded.instructor, room_time = excluded.room_time, headings = excluded.headings, scheme = excluded.scheme, updated = now();"
   );
 }
 
-const rosterRows = Object.entries(roster).map(([id, r]) => `(${lit(id)}, ${lit(r.name)}, ${lit(r.sec)}, ${lit(r.pin)}, ${lit(r.key)})`);
-for (let i = 0; i < rosterRows.length; i += 100) {
+// one student row per student number (a student in two sections has two row ids but one name), then one enrollment per row id
+const students = new Map();
+for (const [id, r] of Object.entries(roster)) if (!students.has(studentNo(id)) || !id.includes("@")) students.set(studentNo(id), r.name);
+const studentRows = [...students].map(([no, name]) => `(${lit(no)}, ${lit(name)})`);
+for (let i = 0; i < studentRows.length; i += 100) {
+  lines.push("insert into public.students (student_no, name) values\n  " + studentRows.slice(i, i + 100).join(",\n  ") + "\non conflict (student_no) do update set name = excluded.name;");
+}
+const enrollRows = Object.entries(roster).map(([id, r]) => {
+  const rec = records[r.key] || {};
+  return `(${lit(id)}, ${lit(studentNo(id))}, ${lit(r.sec)}, ${lit(r.pin)}, ${lit(r.key)}, ${json(rec.s || {})}, ${ts(rec.updated)})`;
+});
+for (let i = 0; i < enrollRows.length; i += 100) {
   lines.push(
-    "insert into public.roster (student_id, name, sec, pin, key) values\n  " + rosterRows.slice(i, i + 100).join(",\n  ") +
-      "\non conflict (student_id) do update set name = excluded.name, sec = excluded.sec, pin = excluded.pin, key = excluded.key;"
+    "insert into public.enrollments (login_id, student_no, sec, pin, key, scores, updated) values\n  " + enrollRows.slice(i, i + 100).join(",\n  ") +
+      "\non conflict (login_id) do update set student_no = excluded.student_no, sec = excluded.sec, pin = excluded.pin, key = excluded.key, scores = excluded.scores, updated = excluded.updated;"
   );
 }
-
-const recordRows = Object.entries(records).map(
-  ([key, r]) => `(${lit(key)}, ${lit(r.id)}, ${lit(r.name)}, ${lit(r.sec)}, ${json(r.s || {})}, ${ts(r.updated)})`
-);
-for (let i = 0; i < recordRows.length; i += 100) {
-  lines.push(
-    "insert into public.records (key, student_id, name, sec, s, updated) values\n  " + recordRows.slice(i, i + 100).join(",\n  ") +
-      "\non conflict (key) do update set student_id = excluded.student_id, name = excluded.name, sec = excluded.sec, s = excluded.s, updated = excluded.updated;"
-  );
-}
+const recordRows = Object.keys(records);
+const rosterRows = enrollRows;
 
 lines.push("commit;", "");
 fs.writeFileSync(out, lines.join("\n"));
-console.error(`Wrote ${out}: ${Object.keys(sections).length} sections, ${rosterRows.length} students, ${recordRows.length} records.`);
+console.error(`Wrote ${out}: ${Object.keys(sections).length} sections, ${students.size} students, ${enrollRows.length} enrollments.`);

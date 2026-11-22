@@ -63,8 +63,8 @@ student sign-in now uses the new `get_records` function.
 **Students & PINs > Email PINs** emails each student their own PIN from the site. Type each student's email in the
 **Email** column (or use **Import emails (CSV)** next to it, with "Student no." and "Email" columns), write the message, press
 **Send a test to me**, then **Send PINs**. Students already emailed are skipped unless you untick the box; changing a
-student's email or resetting their PIN makes them "not emailed" again. Student emails are stored in the `roster`
-table, which only instructors can read.
+student's email or resetting their PIN makes them "not emailed" again. A student's email is stored with the student (the `students`
+table), which only instructors can read.
 
 One-time setup by whoever runs the Supabase project (instructors need nothing else):
 
@@ -88,14 +88,23 @@ Sheets mail merge (`mailmerge/README.md`) still works if you prefer to send from
 
 ## How it protects grades
 
-Students have no accounts. Each record is stored under a secret key derived (PBKDF2) from student number + PIN + a private salt. Row level security gives students no access to the `records` table at all; the only door is the `get_record(key)` function, which returns **one** record for a key and never lists. Only accounts in `public.admins` can write, and the app cannot add to that table. Each section has an **owner** (the instructor who created or imported it): an instructor only sees and changes the students, PINs and scores of their own sections, enforced by row level security and by the write functions. An account with `is_super = true` in `public.admins` (set at the end of `schema.sql`) sees every section. Section names and grading schemes stay publicly readable so students can see their breakdown, and the page title/term/salt (`meta`) is shared. Student numbers are unique across the whole database, so two instructors cannot enroll the same student number; the second import is refused.
+Students have no accounts. Each record is stored under a secret key derived (PBKDF2) from student number + PIN + a private salt. Row level security gives students no access to the `enrollments` table at all; the only door is the `get_record(key)` function, which returns **one** record for a key and never lists. Only accounts in `public.admins` can write, and the app cannot add to that table. Each section has an **owner** (the instructor who created or imported it): an instructor only sees and changes the students, PINs and scores of their own sections, enforced by row level security and by the write functions. An account with `is_super = true` in `public.admins` (set at the end of `schema.sql`) sees every section. Section names and grading schemes stay publicly readable so students can see their breakdown, and the page title/term/salt (`meta`) is shared. Each fact is stored once: a student (number, name, email) is one row in `students` however many sections they are in, a subject (code, description) is one row in `subjects`, and each section points at its subject. A student's PIN, key and scores belong to one enrollment (`enrollments`, one per student per section). Two instructors can teach the same student: the student row is shared, but each instructor sees only the enrollments, PINs and scores of their own sections. Nobody is a "super" instructor unless you set it by hand (see the end of `schema.sql`).
 
 Things to know:
 * **No lockout**: guesses are not rate-limited. Random 6-character PINs (about 887 million combinations) make guessing impractical, but do not replace them with short or easy PINs.
-* PINs are stored in plain text in `roster` (readable only by instructors) so you can look them up and re-issue them.
+* PINs are stored in plain text in `enrollments` (readable only by the instructor of that section) so you can look them up and re-issue them.
 * Data Privacy Act (RA 10173): grades are personal data. Keep the Supabase project private, share PINs individually, and delete data when no longer needed.
 * Students use plain HTTPS requests, so there is no cap on how many can open the page at once. Free Supabase projects pause after a week without activity; open the dashboard to resume.
 
 ## Tests
 
 `npm test` – grading, keys, import, the sign-in screen, the Supabase data layer, and **the database rules**: `supabase/schema.sql` is run in an in-process Postgres (PGlite) and checked for who can read and write what.
+
+
+## Upgrading a database from the older layout (roster + records)
+
+Running the new `supabase/schema.sql` once converts the data in place: the section details move out of the `data` json into real
+columns, subjects and students become their own tables, and `roster` + `records` become `enrollments`. Every student keeps their PIN
+and key. The old tables stay as `roster_old` and `records_old` (and `sections.legacy_data`), locked away from the app; drop them
+once you are happy: `drop table public.roster_old, public.records_old; alter table public.sections drop column legacy_data;`.
+Deploy the new site right after running it: the previous version of the site reads the old tables.

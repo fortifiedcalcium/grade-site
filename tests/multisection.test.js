@@ -38,7 +38,7 @@ describe("the same student in several sections", () => {
     const k2 = await recordKey(salt, "S1@b", "ABC234");
     expect(k1).not.toBe(k2);
     const recs = { [k1]: { key: k1, id: "S1", name: "Ana", sec: "a", s: {} }, [k2]: { key: k2, id: "S1@b", name: "Ana", sec: "b", s: {} } };
-    const tables = { meta: [{ id: 1, salt, title: "T", term: "", note: "", updated: null }], sections: [{ id: "a", data: { name: "A" } }, { id: "b", data: { name: "B" } }] };
+    const tables = { meta: [{ id: 1, salt, title: "T", term: "", note: "", updated: null }], sections: [{ id: "a", name: "A", subject_code: null, scheme: {} }, { id: "b", name: "B", subject_code: null, scheme: {} }] };
     const db = {
       from: (t) => { const api = { select: () => api, eq: () => api, maybeSingle: () => Promise.resolve({ data: tables[t][0], error: null }), then: (res, rej) => Promise.resolve({ data: tables[t], error: null }).then(res, rej) }; return api; },
       rpc: (name, { p_keys }) => Promise.resolve({ data: name === "get_records" ? p_keys.filter((k) => recs[k]).map((k) => recs[k]) : null, error: null }),

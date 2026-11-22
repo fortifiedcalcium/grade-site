@@ -35,7 +35,7 @@ describe("student lookup", () => {
     const db = fakeClient({
       tables: {
         meta: [{ id: 1, title: "T", term: "Term", note: "", salt: "salt", updated: "2026-01-01T00:00:00Z" }],
-        sections: [{ id: "a", data: { name: "Section A" } }],
+        sections: [{ id: "a", name: "Section A", term: "2026-2027 1st Semester", subject_code: "IT 101", subjects: { description: "Intro" }, headings: [], instructor: "Dr. X", room_time: "Rm 1", scheme: { categories: [] } }],
       },
       rpc: { get_records: ({ p_keys }) => (p_keys.includes(key) ? [{ key, id: "2026-00001", name: "Ana", sec: "a", s: { q1: 9 }, updated: 1 }] : []) },
     });
@@ -43,6 +43,8 @@ describe("student lookup", () => {
     const ok = await api.login("2026-00001", "abc234");
     expect(ok.record.name).toBe("Ana");
     expect(ok.section.name).toBe("Section A");
+    // the subject is stored once and joined in; the section still looks the way the screens expect
+    expect(ok.section).toMatchObject({ term: "2026-2027 1st Semester", subject: { code: "IT 101", desc: "Intro" }, instructor: "Dr. X", roomTime: "Rm 1" });
     expect(ok.meta.updated).toBe(Date.parse("2026-01-01T00:00:00Z"));
     await expect(api.login("2026-00001", "WRONG1")).rejects.toMatchObject({ code: "nomatch" });
   });
@@ -59,19 +61,49 @@ describe("student lookup", () => {
 });
 
 describe("listen", () => {
-  it("delivers the table as a map and patches it from realtime events", async () => {
-    const db = fakeClient({ tables: { records: [{ key: "k1", student_id: "S1", name: "Ana", sec: "a", s: { q1: 1 }, updated: null }] } });
+  it("patches a plain table from realtime events", async () => {
+    const db = fakeClient({ tables: { quizzes: [{ id: "q1", sec: "a", title: "One", questions: [], published: false, updated: null }] } });
+    const seen = [];
+    const stop = listen(db, "quizzes", (v) => seen.push(v), () => {});
+    await new Promise((r) => setTimeout(r, 0));
+    expect(Object.keys(seen.at(-1))).toEqual(["q1"]);
+    db.emit({ eventType: "UPDATE", new: { id: "q1", sec: "a", title: "Renamed", questions: [], published: true, updated: null } });
+    expect(seen.at(-1).q1).toMatchObject({ title: "Renamed", published: true });
+    db.emit({ eventType: "INSERT", new: { id: "q2", sec: "a", title: "Two", questions: [], updated: null } });
+    expect(Object.keys(seen.at(-1))).toEqual(["q1", "q2"]);
+    db.emit({ eventType: "DELETE", old: { id: "q1" } });
+    expect(Object.keys(seen.at(-1))).toEqual(["q2"]);
+    stop();
+  });
+  it("builds the roster and the records from the same enrollments joined with their students", async () => {
+    const enr = { login_id: "S1", student_no: "S1", sec: "a", pin: "ABC234", key: "k1", scores: { q1: 1 }, acknowledged: null, emailed: null, updated: null, students: { name: "Ana", email: "ana@example.com" } };
+    const db = fakeClient({ tables: { enrollments: [enr] } });
+    const roster = [], records = [];
+    const stopA = listen(db, "roster", (v) => roster.push(v), () => {});
+    const stopB = listen(db, "records", (v) => records.push(v), () => {});
+    await new Promise((r) => setTimeout(r, 0));
+    expect(roster.at(-1)).toEqual({ S1: { name: "Ana", sec: "a", pin: "ABC234", key: "k1", email: "ana@example.com", emailed: null } });
+    expect(records.at(-1)).toEqual({ k1: { id: "S1", name: "Ana", sec: "a", s: { q1: 1 }, updated: null, ack: null } });
+    stopA(); stopB();
+  });
+  it("reads a joined table again when something changes, instead of patching it", async () => {
+    const table = [{ login_id: "S1", sec: "a", pin: "P", key: "k1", scores: {}, students: { name: "Ana" } }];
+    const db = fakeClient({ tables: { enrollments: table } });
     const seen = [];
     const stop = listen(db, "records", (v) => seen.push(v), () => {});
     await new Promise((r) => setTimeout(r, 0));
-    expect(seen.at(-1)).toEqual({ k1: { id: "S1", name: "Ana", sec: "a", s: { q1: 1 }, updated: null, ack: null } });
-    db.emit({ eventType: "UPDATE", new: { key: "k1", student_id: "S1", name: "Ana", sec: "a", s: { q1: 2 }, updated: null } });
-    expect(seen.at(-1).k1.s).toEqual({ q1: 2 });
-    db.emit({ eventType: "INSERT", new: { key: "k2", student_id: "S2", name: "Ben", sec: "a", s: {}, updated: null } });
-    expect(Object.keys(seen.at(-1))).toEqual(["k1", "k2"]);
-    db.emit({ eventType: "DELETE", old: { key: "k1" } });
-    expect(Object.keys(seen.at(-1))).toEqual(["k2"]);
+    table.push({ login_id: "S2", sec: "a", pin: "P", key: "k2", scores: {}, students: { name: "Ben" } });
+    db.emit({ eventType: "INSERT", new: { login_id: "S2" } });   // the event has no student name; the table is read again
+    await new Promise((r) => setTimeout(r, 300));
+    expect(Object.values(seen.at(-1)).map((r) => r.name)).toEqual(["Ana", "Ben"]);
     stop();
+  });
+  it("saves a section through save_sections, without its count or owner", async () => {
+    const { saveSection } = await import("../src/lib/db.js");
+    const calls = [];
+    const db = { rpc: (name, args) => { calls.push([name, args]); return Promise.resolve({ data: null, error: null }); } };
+    await saveSection(db, "a", { name: "A", count: 3, owner: "u1", term: "T", subject: { code: "X", desc: "D" }, scheme: { categories: [] } });
+    expect(calls).toEqual([["save_sections", { p_rows: [{ id: "a", name: "A", term: "T", subject: { code: "X", desc: "D" }, scheme: { categories: [] } }] }]]);
   });
 });
 
@@ -122,5 +154,21 @@ describe("bulk operations", () => {
     const list = Array.from({ length: 450 }, (_, i) => ({ id: "S" + i, key: "k" + i }));
     expect(await removeStudents(db, list)).toBe(450);
     expect(calls.map((c) => c[1].p_rows.length)).toEqual([200, 200, 50]);
+  });
+});
+
+describe("students shared by two instructors", () => {
+  it("gives the new enrollment its own row id (and so its own key and PIN) when another instructor already uses the plain one", async () => {
+    const { addStudent } = await import("../src/lib/db.js");
+    const calls = [];
+    const db = { rpc: (name, args) => { calls.push([name, args]); return Promise.resolve({ data: name === "taken_login_ids" ? ["2026-00001"] : null, error: null }); } };
+    const r = await addStudent(db, { salt: "salt" }, { id: "2026-00001", name: "Ana", sec: "mine" }, {});
+    expect(r.id).toBe("2026-00001@mine");
+    expect(r.no).toBe("2026-00001");
+    const row = calls.find((c) => c[0] === "upsert_students")[1].p_rows[0];
+    expect(row).toMatchObject({ id: "2026-00001@mine", name: "Ana", sec: "mine" });
+    // a free number keeps the plain row id
+    const free = { rpc: (name, args) => { calls.push([name, args]); return Promise.resolve({ data: null, error: null }); } };
+    expect((await addStudent(free, { salt: "salt" }, { id: "2026-00002", name: "Ben", sec: "mine" }, {})).id).toBe("2026-00002");
   });
 });
