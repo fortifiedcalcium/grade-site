@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import Icon from "../Icon.jsx";
+import logo from "../logo.js";
 import { getDb } from "../supabase.js";
 import { createStudentApi } from "../lib/db.js";
 import { computeGrade, hasValue, inRecordOrder, isNum, usableScale } from "../lib/grading.js";
@@ -34,7 +35,7 @@ export function GradeView({ data, onRefresh, onLogout, onAcknowledge, onSwitch =
     <main className="shell wide mid">
       <header className="topbar">
         <div className="brand">
-          <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
+          <img className="logo" src={logo} alt="Bulacan State University" />
           <div>
             <h1>{meta.title || "ALAB Student Portal"}</h1>
             <p className="muted small">{[record.name, studentNo(record.id)].filter(Boolean).join(" · ")}{section ? " · " + termOf(section) : meta.term ? " · " + meta.term : ""}</p>
@@ -247,7 +248,7 @@ export default function StudentPortal() {
   return (
     <main className="shell narrow">
       <form className="card login" onSubmit={submit}>
-        <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
+        <img className="logo" src={logo} alt="Bulacan State University" />
         <h1><Icon name="scores" size={22} /> ALAB Student Portal</h1>
         <p className="muted intro">Enter your student number and the PIN your instructor gave you.</p>
         <label>

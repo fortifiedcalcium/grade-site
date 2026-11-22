@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Icon from "../../Icon.jsx";
+import logo from "../../logo.js";
 import { getAuth, getDb } from "../../supabase.js";
 import { isTeacher, listen } from "../../lib/db.js";
 import { describeAuthError } from "../../lib/authErrors.js";
@@ -50,7 +51,7 @@ function SignIn() {
   return (
     <main className="shell narrow">
       <form className="card login" onSubmit={submit}>
-        <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
+        <img className="logo" src={logo} alt="Bulacan State University" />
         <h1><Icon name="user" size={22} /> {register ? "Create instructor account" : "Instructor sign in"}</h1>
         <label><Icon name="mail" /> Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" /></label>
         <label><Icon name="key" /> Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={register ? "new-password" : "current-password"} /></label>
@@ -139,7 +140,7 @@ export function Dashboard({ user, initialTab = "grades" }) {
     <main className="shell wide">
       <header className="topbar">
         <div className="brand">
-          <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
+          <img className="logo" src={logo} alt="Bulacan State University" />
           <div>
             <h1>ALAB Student Portal – Instructor</h1>
             <p className="muted small">{user.email}</p>
