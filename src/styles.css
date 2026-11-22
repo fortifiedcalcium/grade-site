@@ -48,15 +48,15 @@ h2 { font-size: 1.1rem; margin: 0 0 .6rem; font-weight: 800; text-transform: upp
 .card.flush { padding: 0; overflow: hidden; }
 .card-title { padding: 12px 14px 0; margin: 0; } .card-note { padding: 0 14px; margin: 2px 0 8px; }
 .login { display: grid; gap: 12px; }
-.login > .logo { margin: 0 auto; }
+.login > .logo { margin: 0 auto; width: 104px; }
 .login > h1, .login > .intro, .login > .center { text-align: center; }
 
 /* top bar */
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 4px 20px 0; padding: 12px 14px; background: var(--primary); color: var(--on-bright); border: var(--bw) solid var(--ink); box-shadow: var(--shadow); }
 .topbar .muted { color: var(--on-bright); }
 .brand { display: flex; align-items: center; gap: 12px; }
-.brand .logo { width: 52px; flex: none; }
-.logo { width: 64px; height: auto; display: block; border: var(--bw) solid var(--ink); border-radius: 50%; background: #fff; box-shadow: var(--shadow-s); }
+.brand .logo { width: 58px; flex: none; }
+.logo { width: 64px; height: auto; display: block; }   /* the BulSU seal is a gear with a transparent background: no frame, so its teeth are not cut off */
 
 /* form controls */
 label { display: grid; gap: 4px; font-size: .9rem; color: var(--text); font-weight: 700; }
