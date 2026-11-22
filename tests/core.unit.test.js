@@ -79,6 +79,20 @@ describe("sections and items", () => {
     sc.categories.forEach((c) => c.items.forEach((i) => { all[i.k] = i.max; }));
     expect(computeGrade(sc, all).total).toBe(100);
   });
+  it("a new section has the columns of the class record template", async () => {
+    const { blankScheme } = await import("../src/lib/db.js");
+    const sc = blankScheme();
+    expect(sc.categories.map((c) => [c.title, c.items.length, c.weight])).toEqual([
+      ["Activities", 6, 20], ["Quizzes", 4, 20], ["Project", 1, 20], ["Attendance", 1, 10], ["Midterm Exam", 1, 15], ["Final Exam", 1, 15],
+    ]);
+    expect(sc.categories.every((c) => c.items.every((i) => i.max === 100))).toBe(true);
+    expect(new Set(sc.categories.flatMap((c) => c.items.map((i) => i.k))).size).toBe(14);
+    // everything blank except the final: pending until the final exam is recorded, then it is graded
+    expect(computeGrade(sc, { midterm1: 100 }).pending).toBe(true);
+    const g = computeGrade(sc, { final1: 100 });
+    expect(g.pending).toBe(false);
+    expect(g.total).toBe(15);
+  });
   it("item keys are unique, even when made in the same millisecond", async () => {
     const { newItemKey } = await import("../src/lib/db.js");
     const keys = new Set(Array.from({ length: 500 }, () => newItemKey("quizzes")));

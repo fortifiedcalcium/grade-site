@@ -237,22 +237,27 @@ export function mergeSection(existing, incoming) {
 
 const slugId = (text) => String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 
-/* A new section starts with the usual lecture weights and one item per category; edit them in Settings. */
+/* A new section gets the columns of the BulSU class record template (the "Lecture" sheet): Activities 1-6, Quizzes 1-4,
+   Project, Attendance, and a Midterm and a Final exam, each out of 100. The weights are 20 / 20 / 20 / 10 / 30 (the term exam's
+   30 is split 15 + 15, as the importer does), and the grade stays "pending" until the final exam is recorded.
+   Edit the columns of a section in Settings. */
 export function blankScheme() {
-  const cat = (id, title, weight, label, max) => ({ id, title, weight, items: [{ k: id + "1", label, max }] });
+  const cat = (id, title, weight, labels) => ({ id, title, weight, items: labels.map((label, i) => ({ k: id + (i + 1), label, max: 100 })) });
+  const numbered = (word, n) => Array.from({ length: n }, (_, i) => word + " " + (i + 1));
   return {
     categories: [
-      cat("exams", "Term Examinations", 30, "Exam", 100),
-      cat("attendance", "Attendance / Participation", 10, "Attendance", 100),
-      cat("activities", "Activities", 20, "Activity 1", 100),
-      cat("project", "Project", 20, "Project", 100),
-      cat("quizzes", "Quizzes", 20, "Quiz 1", 100),
+      cat("activities", "Activities", 20, numbered("Activity", 6)),
+      cat("quizzes", "Quizzes", 20, numbered("Quiz", 4)),
+      cat("project", "Project", 20, ["Project"]),
+      cat("attendance", "Attendance", 10, ["Attendance"]),
+      cat("midterm", "Midterm Exam", 15, ["Midterm Exam"]),
+      cat("final", "Final Exam", 15, ["Final Exam"]),
     ],
     scale: DEFAULT_SCALE,
     scaleNote: DEFAULT_SCALE_NOTE,
     passEquiv: 3,
-    finalCategory: null,
-    holdFinal: false,
+    finalCategory: "final",
+    holdFinal: true,
   };
 }
 

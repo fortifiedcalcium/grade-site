@@ -6,6 +6,7 @@ import { deleteQuiz, resetQuizAttempt, saveQuiz } from "../../lib/db.js";
 import { studentNo } from "../../lib/keys.js";
 import { csvCell, downloadText, fmtNum } from "../../lib/util.js";
 import { sheetsFromWorkbook } from "../../lib/importer.js";
+import { parseQuizDocx } from "../../lib/quizdoc.js";
 
 const EVENT_LABEL = { "left-page": "left the page", copy: "copied", cut: "cut", paste: "pasted", "screenshot-key": "pressed PrintScreen" };
 const when = (t) => (t ? new Date(t).toLocaleString() : "");
@@ -114,15 +115,21 @@ function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew
     e.target.value = "";
     if (!f) return;
     try {
-      const XLSX = await import("xlsx");
-      const sheet = sheetsFromWorkbook(XLSX, await f.arrayBuffer(), "array").find((x) => !x.hidden);
-      const { questions, errors } = parseQuizRows(sheet ? sheet.aoa : []);
+      let parsed;
+      if (/\.docx$/i.test(f.name)) {
+        parsed = await parseQuizDocx(await f.arrayBuffer());
+      } else {
+        const XLSX = await import("xlsx");
+        const sheet = sheetsFromWorkbook(XLSX, await f.arrayBuffer(), "array").find((x) => !x.hidden);
+        parsed = parseQuizRows(sheet ? sheet.aoa : []);
+      }
+      const { questions, errors } = parsed;
       if (!questions.length) return setImportMsg({ ok: false, text: errors.join(" ") });
       const kept = quiz.questions.filter((q) => String(q.text || "").trim());   // drops the empty starter question
       set({ questions: [...kept, ...questions] });
       setImportMsg({ ok: !errors.length, text: "Added " + questions.length + " question" + (questions.length === 1 ? "" : "s") + " from " + f.name + ". Review them, then Save." + (errors.length ? " Skipped: " + errors.join(" ") : "") });
     } catch (err) {
-      setImportMsg({ ok: false, text: "Could not read that file. Use a .xlsx or .csv file." });
+      setImportMsg({ ok: false, text: "Could not read that file. Use a Word (.docx), .xlsx or .csv file." });
     }
   };
   const template = () => downloadText("quiz-template.csv", QUIZ_TEMPLATE_ROWS.map((r) => r.map(csvCell).join(",")).join("\n"));
@@ -170,9 +177,9 @@ function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew
         <button type="button" className="btn small" onClick={() => set({ questions: [...quiz.questions, blankQuestion("tf")] })}><Icon name="plus" /> True / false</button>
         <button type="button" className="btn small" onClick={() => fileRef.current && fileRef.current.click()}><Icon name="import" /> Import questions</button>
         <button type="button" className="btn small" onClick={template}><Icon name="download" /> Template</button>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" aria-label="Import questions file" onChange={onFile} hidden />
+        <input ref={fileRef} type="file" accept=".docx,.xlsx,.xls,.csv" aria-label="Import questions file" onChange={onFile} hidden />
       </p>
-      <p className="muted small">Import from a spreadsheet (.xlsx or .csv) with the columns Question, Type (MC or TF, optional), A, B, C, D…, Answer (the letter, or True/False) and Points (optional). Download the template to see the layout.</p>
+      <p className="muted small">Import from a <strong>Word file (.docx)</strong>: numbered questions with A., B., C., D. choices, then an "Answer Key" table (No. and Answer columns). Or use a spreadsheet (.xlsx or .csv) with the columns Question, Type (optional), A, B, C, D…, Answer and Points (optional); the template shows the layout.</p>
       {importMsg.text && <p className={importMsg.ok ? "banner info" : "banner"} role="status"><Icon name={importMsg.ok ? "info" : "alert"} /> {importMsg.text}</p>}
       {taken > 0 && <p className="banner info"><Icon name="info" /> {taken} student{taken === 1 ? " has" : "s have"} already started this quiz. Changing questions now affects how later attempts are scored; allow retakes if you change the answers.</p>}
       {quiz.itemKey && quiz.itemMax != null && <p className="muted small">The score is scaled to the item's maximum of {fmtNum(quiz.itemMax)} (a student with 8 of 10 points gets {fmtNum(Math.round(0.8 * quiz.itemMax * 100) / 100)}).</p>}
