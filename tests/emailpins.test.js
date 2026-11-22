@@ -29,7 +29,7 @@ describe("emailing PINs", () => {
   it("plans who gets an email, with reasons for the rest", () => {
     const p = buildPlan({ roster, sections, ids: ["S1", "S2", "S3"], template: DEFAULT_TEMPLATE, link, onlyUnsent: true });
     expect(p.ready.map((m) => m.id)).toEqual(["S1"]);
-    expect(p.ready[0]).toMatchObject({ to: "ana@x.edu", subject: "Your grade portal PIN (BSIT 3-A)" });
+    expect(p.ready[0]).toMatchObject({ to: "ana@x.edu", subject: "Your ALAB Student Portal PIN (BSIT 3-A)" });
     expect(p.ready[0].text).toContain("PIN: AAA111");
     expect(p.skipped.map((s) => s.reason)).toEqual(["no valid email", "already emailed"]);
     const all = buildPlan({ roster, sections, ids: ["S3"], template: DEFAULT_TEMPLATE, link, onlyUnsent: false });

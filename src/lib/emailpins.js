@@ -5,8 +5,8 @@ import { studentNo } from "./keys.js";
    Everything here is plain functions so it can be tested without a browser or a mail provider. */
 
 export const DEFAULT_TEMPLATE = {
-  subject: "Your grade portal PIN ({{Section}})",
-  sender: "Grade Portal",
+  subject: "Your ALAB Student Portal PIN ({{Section}})",
+  sender: "ALAB Student Portal",
   replyTo: "",
   pattern: "",
   body:

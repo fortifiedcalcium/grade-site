@@ -36,7 +36,7 @@ export function GradeView({ data, onRefresh, onLogout, onAcknowledge, onSwitch =
         <div className="brand">
           <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
           <div>
-            <h1>{meta.title || "Student Grade Portal"}</h1>
+            <h1>{meta.title || "ALAB Student Portal"}</h1>
             <p className="muted small">{[record.name, studentNo(record.id)].filter(Boolean).join(" · ")}{section ? " · " + termOf(section) : meta.term ? " · " + meta.term : ""}</p>
           </div>
         </div>
@@ -248,7 +248,7 @@ export default function StudentPortal() {
     <main className="shell narrow">
       <form className="card login" onSubmit={submit}>
         <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
-        <h1><Icon name="scores" size={22} /> Student Grade Portal</h1>
+        <h1><Icon name="scores" size={22} /> ALAB Student Portal</h1>
         <p className="muted intro">Enter your student number and the PIN your instructor gave you.</p>
         <label>
           <Icon name="user" /> Student number
@@ -259,7 +259,7 @@ export default function StudentPortal() {
           <input value={pin} onChange={(e) => setPin(e.target.value)} type="password" autoComplete="current-password" placeholder="6-character PIN" />
         </label>
         {error && <p className="error" role="alert"><Icon name="alert" /> {error}</p>}
-        <button className="btn primary" disabled={busy}><Icon name="login" /> {busy ? "Checking…" : "View my grades"}</button>
+        <button className="btn primary" disabled={busy}><Icon name="login" /> {busy ? "Signing in…" : "Sign in"}</button>
         <p className="muted small">Your grades are private. Do not share your PIN.</p>
         <p className="small center"><a href="/teacher"><Icon name="user" /> Instructor sign in</a></p>
       </form>

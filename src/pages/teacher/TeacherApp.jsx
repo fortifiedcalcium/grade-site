@@ -141,7 +141,7 @@ export function Dashboard({ user, initialTab = "grades" }) {
         <div className="brand">
           <img className="logo" src="/bulsu-logo.png" alt="Bulacan State University" />
           <div>
-            <h1>Grade Portal – Instructor</h1>
+            <h1>ALAB Student Portal – Instructor</h1>
             <p className="muted small">{user.email}</p>
           </div>
         </div>

@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
   const messages = Array.isArray(body?.messages) ? body.messages : [];
   if (!messages.length || messages.length > MAX_MESSAGES) return reply({ error: "Send between 1 and " + MAX_MESSAGES + " messages at a time." }, 400);
   const test = body?.test === true;
-  const sender = clean(body?.sender, 80) || "Grade Portal";
+  const sender = clean(body?.sender, 80) || "ALAB Student Portal";
   const replyTo = EMAIL.test(String(body?.replyTo ?? "").trim()) ? String(body.replyTo).trim() : u.user.email;
 
   const results: { id: string; ok: boolean; error?: string }[] = [];

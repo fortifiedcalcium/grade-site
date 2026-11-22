@@ -1,4 +1,4 @@
-# Student Grade Portal (React + Supabase)
+# ALAB Student Portal (React + Supabase)
 
 * `/` – students sign in with **student number + PIN** and see their grades (same frame as the instructor page: header, tabs, cards and tables).
 * `/teacher` – you sign in with email + password, edit scores in a spreadsheet-style grid, import the Excel class record, add and delete students and sections, see/reset PINs, and edit weights and maximum scores.

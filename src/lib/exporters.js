@@ -55,7 +55,7 @@ function toCsv(report) {
 async function toXlsx(report, assets) {
   const ExcelJS = (await import("exceljs/dist/exceljs.min.js")).default;
   const wb = new ExcelJS.Workbook();
-  wb.creator = "BulSU Grade Portal";
+  wb.creator = "ALAB Student Portal";
   const font = (extra) => ({ name: REPORT_FONT, size: 10, ...extra });
   const thin = { style: "thin", color: { argb: "FFBBBBBB" } };
   const border = { top: thin, left: thin, bottom: thin, right: thin };
@@ -331,7 +331,7 @@ async function toDocx(report, assets) {
   });
 
   const doc = new d.Document({
-    creator: "BulSU Grade Portal",
+    creator: "ALAB Student Portal",
     title: report.title,
     styles: { default: { document: { run: { font: REPORT_FONT, size: 18 } } } },
     sections: [
@@ -387,7 +387,7 @@ export async function buildPdfDoc(report, assets) {
     doc.addImage(assets.letterhead, "PNG", 0, 0, W, H, "letterhead", "FAST");
   };
   const rgb = (hex) => [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
-  doc.setProperties({ title: report.title, creator: "BulSU Grade Portal" });
+  doc.setProperties({ title: report.title, creator: "ALAB Student Portal" });
   doc.setFont("helvetica", "bold");
 
   bg();

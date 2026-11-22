@@ -1,4 +1,4 @@
--- Grade Portal: Supabase schema, row level security and helper functions.
+-- ALAB Student Portal: Supabase schema, row level security and helper functions.
 -- Run this once in Supabase > SQL Editor (it is safe to run again).
 --
 -- Tables (each fact is stored once)
