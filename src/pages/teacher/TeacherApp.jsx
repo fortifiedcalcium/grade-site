@@ -6,6 +6,7 @@ import { describeAuthError } from "../../lib/authErrors.js";
 import GradesTab from "./GradesTab.jsx";
 import PinsTab from "./PinsTab.jsx";
 import ImportTab from "./ImportTab.jsx";
+import QuizzesTab from "./QuizzesTab.jsx";
 import SettingsTab from "./SettingsTab.jsx";
 
 function SignIn() {
@@ -83,6 +84,7 @@ function NotAdmin({ user }) {
 const TABS = [
   ["grades", "Grades", "grades"],
   ["pins", "Students & PINs", "users"],
+  ["quizzes", "Quizzes", "quiz"],
   ["import", "Import", "import"],
   ["settings", "Settings", "settings"],
 ];
@@ -94,6 +96,8 @@ export function Dashboard({ user, initialTab = "grades" }) {
   const [sections, setSections] = useState(undefined);
   const [roster, setRoster] = useState(undefined);
   const [records, setRecords] = useState(undefined);
+  const [quizzes, setQuizzes] = useState(undefined);
+  const [attempts, setAttempts] = useState(undefined);
   const [error, setError] = useState("");
   const [superUser, setSuperUser] = useState(undefined);
 
@@ -113,11 +117,13 @@ export function Dashboard({ user, initialTab = "grades" }) {
       listen(db, "sections", setSections, onErr),
       listen(db, "roster", setRoster, onErr),
       listen(db, "records", setRecords, onErr),
+      listen(db, "quizzes", setQuizzes, onErr),
+      listen(db, "attempts", setAttempts, onErr),
     ];
     return () => offs.forEach((off) => off());
   }, [db]);
 
-  const loading = [meta, sections, roster, records, superUser].some((x) => x === undefined);
+  const loading = [meta, sections, roster, records, quizzes, attempts, superUser].some((x) => x === undefined);
   const [slow, setSlow] = useState(false);
   useEffect(() => {
     if (!loading) return;
@@ -127,7 +133,7 @@ export function Dashboard({ user, initialTab = "grades" }) {
   const allSections = sections || {};
   const mine = Object.fromEntries(Object.entries(allSections).filter(([, x]) => superUser || x.owner === user.id));
   const takenIds = new Set(Object.keys(allSections).filter((id) => !mine[id]));
-  const ctx = { db, meta: meta || {}, sections: mine, takenIds, roster: roster || {}, records: records || {} };
+  const ctx = { db, meta: meta || {}, sections: mine, takenIds, roster: roster || {}, records: records || {}, quizzes: quizzes || {}, attempts: attempts || {} };
 
   return (
     <main className="shell wide">
@@ -156,6 +162,8 @@ export function Dashboard({ user, initialTab = "grades" }) {
         <GradesTab {...ctx} goImport={() => setTab("import")} />
       ) : tab === "pins" ? (
         <PinsTab {...ctx} user={user} />
+      ) : tab === "quizzes" ? (
+        <QuizzesTab {...ctx} />
       ) : tab === "import" ? (
         <ImportTab {...ctx} />
       ) : (

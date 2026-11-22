@@ -108,9 +108,10 @@ describe("bulk operations", () => {
       S3: { name: "Cy", sec: "a", pin: "333333", key: "k3" },
     };
     expect(await clearSectionScores(db, "a", roster)).toBe(2);
-    expect(calls).toHaveLength(1);
-    expect(calls[0][0]).toBe("upsert_students");
-    expect(calls[0][1].p_rows).toEqual([
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toEqual(["clear_quiz_attempts", { p_sec: "a" }]);   // quiz attempts go too, so quizzes can be retaken
+    expect(calls[1][0]).toBe("upsert_students");
+    expect(calls[1][1].p_rows).toEqual([
       { id: "S1", name: "Ana", sec: "a", pin: "111111", key: "k1", s: {} },
       { id: "S3", name: "Cy", sec: "a", pin: "333333", key: "k3", s: {} },
     ]);

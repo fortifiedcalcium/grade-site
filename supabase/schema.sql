@@ -211,6 +211,7 @@ begin
   if exists (select 1 from jsonb_array_elements(p_rows) r where public.student_conflict(r ->> 'id', r ->> 'key')) then
     raise exception 'not allowed' using errcode = '42501';
   end if;
+  delete from public.quiz_attempts where key in (select r ->> 'key' from jsonb_array_elements(p_rows) r);
   delete from public.records where key in (select r ->> 'key' from jsonb_array_elements(p_rows) r);
   delete from public.roster  where student_id in (select r ->> 'id' from jsonb_array_elements(p_rows) r);
 end $$;
@@ -223,6 +224,7 @@ begin
   if not coalesce(public.can_manage_section((select sec from public.roster where student_id = p_id)), false) then
     raise exception 'not allowed' using errcode = '42501';
   end if;
+  update public.quiz_attempts set key = p_new_key where key = p_old_key;
   update public.records set key = p_new_key, updated = now() where key = p_old_key;
   if not found then
     insert into public.records (key, student_id, name, sec)
@@ -261,6 +263,7 @@ begin
   if not public.can_manage_section(p_id) then
     raise exception 'not allowed' using errcode = '42501';
   end if;
+  delete from public.quizzes where sec = p_id;   -- their attempts go with them
   delete from public.records where sec = p_id;
   delete from public.roster  where sec = p_id;
   get diagnostics n = row_count;
@@ -282,6 +285,162 @@ grant execute on function
   public.set_student_emails(jsonb), public.mark_emailed(jsonb)
   to authenticated;
 
+-- ---------------------------------------------------------------- quizzes
+-- An instructor builds a quiz per section. The questions (with the answers) are readable by instructors only: a student
+-- gets the questions WITHOUT the answers from start_quiz, one attempt per student, and the server does the scoring.
+create table if not exists public.quizzes (
+  id             text primary key,
+  sec            text not null,
+  title          text not null check (char_length(title) < 200),
+  item_key       text,                                   -- grade item that receives the score (null = do not record)
+  item_max       numeric,                                -- that item's maximum score; the quiz score is scaled to it
+  questions      jsonb not null default '[]' check (jsonb_typeof(questions) = 'array' and char_length(questions::text) < 200000),
+  published      boolean not null default false,
+  time_limit     int check (time_limit is null or time_limit between 1 and 600),   -- minutes, enforced by the server
+  shuffle        boolean not null default true,          -- questions and choices come in a different order per student
+  lockdown       boolean not null default true,          -- tab switches are logged; too many auto-submit the quiz
+  max_violations int not null default 3 check (max_violations between 1 and 20),
+  updated        timestamptz not null default now()
+);
+create index if not exists quizzes_sec_idx on public.quizzes (sec);
+
+create table if not exists public.quiz_attempts (
+  quiz_id    text not null references public.quizzes (id) on delete cascade,
+  key        text not null,
+  sec        text not null,
+  student_id text not null,
+  name       text not null,
+  started    timestamptz not null default now(),         -- set by the server: the time limit counts from here
+  submitted  timestamptz,
+  points     numeric,
+  total      numeric,
+  answers    jsonb,
+  violations int not null default 0,
+  events     jsonb not null default '[]',                -- [{ t (ms), type }]: what the page noticed (tab switch, paste, ...)
+  late       boolean not null default false,             -- submitted after the time limit: scored 0
+  primary key (quiz_id, key)
+);
+create index if not exists quiz_attempts_sec_idx on public.quiz_attempts (sec);
+
+alter table public.quizzes       enable row level security;
+alter table public.quiz_attempts enable row level security;
+drop policy if exists quizzes_all   on public.quizzes;
+drop policy if exists attempts_read on public.quiz_attempts;
+drop policy if exists attempts_del  on public.quiz_attempts;
+drop policy if exists attempts_upd  on public.quiz_attempts;
+create policy quizzes_all   on public.quizzes       for all    to authenticated using (public.can_manage_section(sec)) with check (public.can_manage_section(sec));
+create policy attempts_read on public.quiz_attempts for select to authenticated using (public.can_manage_section(sec));
+create policy attempts_del  on public.quiz_attempts for delete to authenticated using (public.can_manage_section(sec));
+-- only the key column may change (reset_pin moves an attempt to the student's new key)
+create policy attempts_upd  on public.quiz_attempts for update to authenticated using (public.can_manage_section(sec)) with check (public.can_manage_section(sec));
+revoke all on public.quizzes, public.quiz_attempts from anon, authenticated;
+grant select, insert, update, delete on public.quizzes to authenticated;
+grant select, delete on public.quiz_attempts to authenticated;
+grant update (key) on public.quiz_attempts to authenticated;
+
+-- Published quizzes of the student's section: no questions and no answers, only what is needed to list them.
+create or replace function public.get_quizzes(p_key text) returns jsonb
+  language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', q.id, 'title', q.title, 'count', jsonb_array_length(q.questions),
+    'total', (select coalesce(sum(coalesce((x ->> 'points')::numeric, 1)), 0) from jsonb_array_elements(q.questions) x),
+    'timeLimit', q.time_limit, 'lockdown', q.lockdown, 'maxViolations', q.max_violations,
+    'started', (extract(epoch from a.started) * 1000)::bigint,
+    'submitted', (extract(epoch from a.submitted) * 1000)::bigint,
+    'points', a.points, 'attemptTotal', a.total, 'late', a.late) order by q.updated, q.title), '[]'::jsonb)
+  from public.records r
+  join public.quizzes q on q.sec = r.sec and q.published
+  left join public.quiz_attempts a on a.quiz_id = q.id and a.key = r.key
+  where r.key = p_key
+$$;
+
+-- Starts (or resumes) the student's one attempt and returns the questions WITHOUT their answers. The clock starts here.
+create or replace function public.start_quiz(p_key text, p_quiz text) returns jsonb
+  language plpgsql security definer set search_path = public as $$
+declare r public.records; q public.quizzes; a public.quiz_attempts; left_ms bigint;
+begin
+  select * into r from public.records where key = p_key;
+  select * into q from public.quizzes where id = p_quiz and published and sec = r.sec;
+  if r.key is null or q.id is null then raise exception 'quiz not available' using errcode = 'P0002'; end if;
+  select * into a from public.quiz_attempts where quiz_id = q.id and key = r.key;
+  if a.quiz_id is not null and a.submitted is not null then raise exception 'already submitted' using errcode = 'P0001'; end if;
+  if a.quiz_id is null then
+    insert into public.quiz_attempts (quiz_id, key, sec, student_id, name) values (q.id, r.key, r.sec, r.student_id, r.name)
+      returning * into a;
+  end if;
+  left_ms := case when q.time_limit is null then null
+                  else greatest(0, (extract(epoch from (a.started + make_interval(mins => q.time_limit) - now())) * 1000)::bigint) end;
+  return jsonb_build_object(
+    'id', q.id, 'title', q.title, 'remainingMs', left_ms, 'violations', a.violations,
+    'timeLimit', q.time_limit, 'lockdown', q.lockdown, 'maxViolations', q.max_violations, 'shuffle', q.shuffle,
+    'questions', (select coalesce(jsonb_agg(x - 'answer' order by ord), '[]'::jsonb) from jsonb_array_elements(q.questions) with ordinality t(x, ord)));
+end $$;
+
+-- The page tells the server what it noticed (switching tabs, pasting, ...). Returns the running count, null if there is nothing open.
+create or replace function public.log_quiz_event(p_key text, p_quiz text, p_type text) returns int
+  language sql security definer set search_path = public as $$
+  update public.quiz_attempts
+     set violations = violations + 1,
+         events = case when jsonb_array_length(events) < 100
+                       then events || jsonb_build_array(jsonb_build_object('t', (extract(epoch from now()) * 1000)::bigint, 'type', left(coalesce(p_type, ''), 30)))
+                       else events end
+   where key = p_key and quiz_id = p_quiz and submitted is null
+  returning violations
+$$;
+
+-- Scores the answers on the server ({ questionId: choice index | true | false }) and puts the result in the grade item.
+-- After the time limit (30 seconds of grace for the network) the attempt is recorded as late and scores 0.
+create or replace function public.submit_quiz(p_key text, p_quiz text, p_answers jsonb) returns jsonb
+  language plpgsql security definer set search_path = public as $$
+declare q public.quizzes; a public.quiz_attempts; pts numeric := 0; tot numeric := 0; is_late boolean; shown numeric;
+begin
+  select * into a from public.quiz_attempts where quiz_id = p_quiz and key = p_key;
+  if a.quiz_id is null then raise exception 'not started' using errcode = 'P0002'; end if;
+  if a.submitted is not null then raise exception 'already submitted' using errcode = 'P0001'; end if;
+  select * into q from public.quizzes where id = p_quiz;
+  if jsonb_typeof(p_answers) is distinct from 'object' then p_answers := '{}'::jsonb; end if;
+  is_late := q.time_limit is not null and now() > a.started + make_interval(mins => q.time_limit) + interval '30 seconds';
+  select coalesce(sum(coalesce((x ->> 'points')::numeric, 1)), 0),
+         coalesce(sum(case when not is_late and p_answers -> (x ->> 'id') = x -> 'answer' then coalesce((x ->> 'points')::numeric, 1) else 0 end), 0)
+    into tot, pts from jsonb_array_elements(q.questions) x;
+  update public.quiz_attempts set submitted = now(), points = pts, total = tot, late = is_late, answers = p_answers
+   where quiz_id = p_quiz and key = p_key;
+  if q.item_key is not null and q.item_max is not null and tot > 0 then
+    shown := round(pts / tot * q.item_max, 2);
+    update public.records set s = jsonb_set(s, array[q.item_key], to_jsonb(shown)), acknowledged = null, updated = now() where key = p_key;
+  end if;
+  return jsonb_build_object('points', pts, 'total', tot, 'late', is_late, 'score', shown);
+end $$;
+
+-- Lets a student take a quiz again: removes the attempt and the score it wrote.
+create or replace function public.reset_quiz_attempt(p_quiz text, p_key text) returns void
+  language plpgsql as $$
+declare q public.quizzes;
+begin
+  perform public.require_admin();
+  select * into q from public.quizzes where id = p_quiz;
+  if q.id is null or not public.can_manage_section(q.sec) then raise exception 'not allowed' using errcode = '42501'; end if;
+  delete from public.quiz_attempts where quiz_id = p_quiz and key = p_key;
+  if q.item_key is not null then
+    update public.records set s = s - q.item_key, acknowledged = null, updated = now() where key = p_key and sec = q.sec;
+  end if;
+end $$;
+
+-- Removes every quiz attempt of a section (used by "Clear all scores", so students can retake those quizzes).
+create or replace function public.clear_quiz_attempts(p_sec text) returns void
+  language plpgsql as $$
+begin
+  perform public.require_admin();
+  if not public.can_manage_section(p_sec) then raise exception 'not allowed' using errcode = '42501'; end if;
+  delete from public.quiz_attempts where sec = p_sec;
+end $$;
+
+revoke execute on function public.get_quizzes(text), public.start_quiz(text, text), public.log_quiz_event(text, text, text),
+  public.submit_quiz(text, text, jsonb), public.reset_quiz_attempt(text, text), public.clear_quiz_attempts(text) from public, anon, authenticated;
+grant execute on function public.get_quizzes(text), public.start_quiz(text, text), public.log_quiz_event(text, text, text),
+  public.submit_quiz(text, text, jsonb) to anon, authenticated;
+grant execute on function public.reset_quiz_attempt(text, text), public.clear_quiz_attempts(text) to authenticated;
+
 -- ---------------------------------------------------------------- live updates for the instructor screens
 do $$
 begin
@@ -290,6 +449,8 @@ begin
     begin alter publication supabase_realtime add table public.sections; exception when duplicate_object then null; end;
     begin alter publication supabase_realtime add table public.roster;   exception when duplicate_object then null; end;
     begin alter publication supabase_realtime add table public.records;  exception when duplicate_object then null; end;
+    begin alter publication supabase_realtime add table public.quizzes;  exception when duplicate_object then null; end;
+    begin alter publication supabase_realtime add table public.quiz_attempts; exception when duplicate_object then null; end;
   end if;
 end $$;
 

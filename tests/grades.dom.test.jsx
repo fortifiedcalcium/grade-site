@@ -58,10 +58,11 @@ describe("clear all scores", () => {
   it("blanks the section's scores after confirming", async () => {
     mount();
     fireEvent.click(screen.getByRole("button", { name: /clear all scores/i }));
-    await waitFor(() => expect(calls).toHaveLength(1));
-    expect(calls[0][0]).toBe("upsert_students");
-    expect(calls[0][1].p_rows).toHaveLength(3);
-    expect(calls[0][1].p_rows.every((r) => JSON.stringify(r.s) === "{}")).toBe(true);
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[0][0]).toBe("clear_quiz_attempts");
+    expect(calls[1][0]).toBe("upsert_students");
+    expect(calls[1][1].p_rows).toHaveLength(3);
+    expect(calls[1][1].p_rows.every((r) => JSON.stringify(r.s) === "{}")).toBe(true);
     expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/Clear ALL scores for the 3 students/));
   });
 });

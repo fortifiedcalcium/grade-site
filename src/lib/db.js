@@ -82,6 +82,13 @@ export function createStudentApi(db) {
         })()
       ),
 
+    /* Quizzes: the list has no questions. start() returns them without answers and starts the server's clock;
+       submit() is scored on the server. event() reports something suspicious the page noticed. */
+    quizzes: (key) => withTimeout(Promise.resolve(db.rpc("get_quizzes", { p_key: key })).then((r) => unwrap(r) || [])),
+    startQuiz: (key, quizId) => withTimeout(Promise.resolve(db.rpc("start_quiz", { p_key: key, p_quiz: quizId })).then(unwrap)),
+    submitQuiz: (key, quizId, answers) => withTimeout(Promise.resolve(db.rpc("submit_quiz", { p_key: key, p_quiz: quizId, p_answers: answers })).then(unwrap)),
+    quizEvent: (key, quizId, type) => Promise.resolve(db.rpc("log_quiz_event", { p_key: key, p_quiz: quizId, p_type: type })).then(unwrap).catch(() => null),
+
     refresh: (key) =>
       withTimeout(
         (async () => {
@@ -109,6 +116,23 @@ const SOURCES = {
   },
 };
 
+SOURCES.quizzes = {
+  table: "quizzes", pk: "id",
+  shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.id, {
+    sec: r.sec, title: r.title, itemKey: r.item_key || "", itemMax: r.item_max == null ? null : Number(r.item_max), questions: r.questions || [],
+    published: Boolean(r.published), timeLimit: r.time_limit, shuffle: r.shuffle !== false, lockdown: r.lockdown !== false,
+    maxViolations: r.max_violations || 3, updated: ms(r.updated),
+  }])),
+};
+SOURCES.attempts = {
+  table: "quiz_attempts", pk: ["quiz_id", "key"],
+  shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.quiz_id + "|" + r.key, {
+    quizId: r.quiz_id, key: r.key, sec: r.sec, id: r.student_id, name: r.name, started: ms(r.started), submitted: ms(r.submitted),
+    points: r.points == null ? null : Number(r.points), total: r.total == null ? null : Number(r.total),
+    violations: r.violations || 0, events: r.events || [], late: Boolean(r.late),
+  }])),
+};
+
 const POLL_MS = 30000;
 
 /* Calls onValueCb with the whole table now and again whenever it changes. Realtime events patch the
@@ -118,21 +142,22 @@ export function listen(db, path, onValueCb, onError) {
   const src = SOURCES[path];
   let rows = new Map();
   let alive = true;
+  const pkOf = (r) => (Array.isArray(src.pk) ? src.pk.map((c) => r[c]).join("|") : r[src.pk]);
   const emit = () => alive && onValueCb(src.shape(rows));
 
   const load = async () => {
     const { data, error } = await db.from(src.table).select("*");
     if (!alive) return;
     if (error) return onError && onError(error);
-    rows = new Map(data.map((r) => [r[src.pk], r]));
+    rows = new Map(data.map((r) => [pkOf(r), r]));
     emit();
   };
 
   const channel = db
     .channel("rt-" + path + "-" + Math.random().toString(36).slice(2))
     .on("postgres_changes", { event: "*", schema: "public", table: src.table }, (p) => {
-      if (p.eventType === "DELETE") rows.delete(p.old[src.pk]);
-      else rows.set(p.new[src.pk], p.new);
+      if (p.eventType === "DELETE") rows.delete(pkOf(p.old));
+      else rows.set(pkOf(p.new), p.new);
       emit();
     })
     .subscribe((status) => { if (status === "SUBSCRIBED") load(); });
@@ -266,6 +291,19 @@ export async function startSemester(db, sections, term, taken) {
   return source.length;
 }
 
+/* ---- quizzes (instructor) ---- */
+export async function saveQuiz(db, id, quiz) {
+  unwrap(await db.from("quizzes").upsert({
+    id, sec: quiz.sec, title: String(quiz.title).trim(), item_key: quiz.itemKey || null, item_max: quiz.itemKey ? quiz.itemMax : null,
+    questions: clean(quiz.questions), published: Boolean(quiz.published),
+    time_limit: quiz.timeLimit ? Number(quiz.timeLimit) : null, shuffle: quiz.shuffle !== false, lockdown: quiz.lockdown !== false,
+    max_violations: Number(quiz.maxViolations) || 3, updated: new Date().toISOString(),
+  }));
+}
+export async function deleteQuiz(db, id) { unwrap(await db.from("quizzes").delete().eq("id", id)); }
+/* Removes one student's attempt (and the score it wrote) so they can take the quiz again. */
+export async function resetQuizAttempt(db, quizId, key) { unwrap(await db.rpc("reset_quiz_attempt", { p_quiz: quizId, p_key: key })); }
+
 /* Removes the section and every student in it, with their scores. Returns how many students went. */
 export async function deleteSection(db, id) {
   return unwrap(await db.rpc("delete_section", { p_id: id }));
@@ -313,6 +351,7 @@ export async function clearSectionScores(db, secId, roster) {
   const rows = Object.entries(roster || {})
     .filter(([, r]) => r.sec === secId)
     .map(([id, r]) => ({ id, name: r.name, sec: r.sec, pin: r.pin, key: r.key, s: {} }));
+  unwrap(await db.rpc("clear_quiz_attempts", { p_sec: secId }));   // so students can retake the quizzes whose scores were cleared
   for (let i = 0; i < rows.length; i += 200) unwrap(await db.rpc("upsert_students", { p_rows: rows.slice(i, i + 200) }));
   return rows.length;
 }

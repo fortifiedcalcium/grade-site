@@ -1,0 +1,191 @@
+import React, { useState } from "react";
+import Icon from "../../Icon.jsx";
+import { SectionPicker, useSectionPicker } from "../../lib/sectionPicker.jsx";
+import { blankQuestion, blankQuiz, newQuizId, quizProblems, totalPoints } from "../../lib/quiz.js";
+import { deleteQuiz, resetQuizAttempt, saveQuiz } from "../../lib/db.js";
+import { studentNo } from "../../lib/keys.js";
+import { fmtNum } from "../../lib/util.js";
+
+const EVENT_LABEL = { "left-page": "left the page", copy: "copied", cut: "cut", paste: "pasted", "screenshot-key": "pressed PrintScreen" };
+const when = (t) => (t ? new Date(t).toLocaleString() : "");
+
+function QuestionEditor({ q, n, onChange, onRemove, onMove }) {
+  const set = (patch) => onChange({ ...q, ...patch });
+  const setType = (type) => onChange({ ...blankQuestion(type), id: q.id, text: q.text, points: q.points });
+  return (
+    <div className="qedit">
+      <div className="row">
+        <strong>Question {n + 1}</strong>
+        <select aria-label={"Type of question " + (n + 1)} value={q.type} onChange={(e) => setType(e.target.value)}>
+          <option value="mc">Multiple choice</option>
+          <option value="tf">True or false</option>
+        </select>
+        <label className="inline">Points <input className="short" type="number" min="0" step="0.5" value={q.points} onChange={(e) => set({ points: Number(e.target.value) })} /></label>
+        <button type="button" className="btn small" aria-label={"Move question " + (n + 1) + " up"} onClick={() => onMove(-1)}>↑</button>
+        <button type="button" className="btn small" aria-label={"Move question " + (n + 1) + " down"} onClick={() => onMove(1)}>↓</button>
+        <button type="button" className="btn small danger" aria-label={"Remove question " + (n + 1)} onClick={onRemove}><Icon name="trash" /></button>
+      </div>
+      <label>Question<textarea rows={2} value={q.text} onChange={(e) => set({ text: e.target.value })} /></label>
+      {q.type === "tf" ? (
+        <div className="row">
+          {[[true, "True"], [false, "False"]].map(([v, label]) => (
+            <label className="inline" key={label}><input type="radio" name={"ans-" + q.id} checked={q.answer === v} onChange={() => set({ answer: v })} /> {label} is correct</label>
+          ))}
+        </div>
+      ) : (
+        <>
+          {q.choices.map((c, i) => (
+            <div className="row" key={i} style={{ marginTop: 6 }}>
+              <input type="radio" name={"ans-" + q.id} aria-label={"Choice " + (i + 1) + " is correct"} checked={q.answer === i} onChange={() => set({ answer: i })} />
+              <input aria-label={"Choice " + (i + 1) + " of question " + (n + 1)} value={c} style={{ flex: 1 }} onChange={(e) => set({ choices: q.choices.map((x, j) => (j === i ? e.target.value : x)) })} />
+              {q.choices.length > 2 && (
+                <button type="button" className="btn small danger" aria-label={"Remove choice " + (i + 1)}
+                  onClick={() => set({ choices: q.choices.filter((_, j) => j !== i), answer: q.answer === i ? 0 : q.answer > i ? q.answer - 1 : q.answer })}><Icon name="close" /></button>
+              )}
+            </div>
+          ))}
+          {q.choices.length < 8 && <p><button type="button" className="btn small" onClick={() => set({ choices: [...q.choices, ""] })}><Icon name="plus" /> Choice</button></p>}
+          <p className="muted small">Select the round button next to the correct choice.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Results({ db, quiz, quizId, students, attempts }) {
+  const [msg, setMsg] = useState("");
+  const byKey = Object.fromEntries(attempts.map((a) => [a.key, a]));
+  const rows = students.map(([key, r]) => ({ key, r, a: byKey[key] }));
+  const reset = async (key, name) => {
+    if (!window.confirm("Let " + name + " take this quiz again? Their attempt" + (quiz.itemKey ? " and the score it recorded" : "") + " will be removed.")) return;
+    try { await resetQuizAttempt(db, quizId, key); setMsg(name + " can retake the quiz."); } catch (e) { setMsg("Not reset: " + e.message); }
+  };
+  const flagged = attempts.filter((a) => a.violations > 0).length;
+  return (
+    <>
+      <p className="muted small">
+        {attempts.filter((a) => a.submitted).length} submitted, {attempts.filter((a) => !a.submitted).length} in progress, {students.length - attempts.length} not started
+        {flagged > 0 && <> · <strong>{flagged}</strong> with anti-cheat warnings</>}.
+      </p>
+      <div className="scroll">
+        <table className="grid">
+          <thead><tr><th>Student</th><th>Status</th><th className="num">Score</th><th className="num">Warnings</th><th>What was recorded</th><th><span className="sr-only">Actions</span></th></tr></thead>
+          <tbody>
+            {rows.map(({ key, r, a }) => (
+              <tr key={key}>
+                <td>{r.name} <span className="muted small">{studentNo(a ? a.id : key)}</span></td>
+                <td>{!a ? "Not started" : a.submitted ? (a.late ? "Late (0)" : "Submitted") : "In progress"}</td>
+                <td className="num">{a && a.submitted ? fmtNum(a.points) + " / " + fmtNum(a.total) : "–"}</td>
+                <td className={"num" + (a && a.violations >= quiz.maxViolations && quiz.lockdown ? " bad" : "")}>{a ? a.violations : "–"}</td>
+                <td className="small">{a && a.events.length ? a.events.map((e) => (EVENT_LABEL[e.type] || e.type) + " " + new Date(e.t).toLocaleTimeString()).join(", ") : ""}{a && a.submitted ? <span className="muted"> · submitted {when(a.submitted)}</span> : null}</td>
+                <td className="right">{a && <button type="button" className="btn small" onClick={() => reset(key, r.name)}><Icon name="refresh" /> Allow retake</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {msg && <p className="small" role="status">{msg}</p>}
+    </>
+  );
+}
+
+function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew, onDone }) {
+  const [quiz, setQuiz] = useState(() => JSON.parse(JSON.stringify(initial)));
+  const [msg, setMsg] = useState("");
+  const items = ((section && section.scheme && section.scheme.categories) || []).flatMap((c) => (c.items || []).map((i) => ({ ...i, cat: c.title })));
+  const set = (patch) => setQuiz({ ...quiz, ...patch });
+  const setQ = (i, q) => set({ questions: quiz.questions.map((x, j) => (j === i ? q : x)) });
+  const move = (i, d) => {
+    const j = i + d;
+    if (j < 0 || j >= quiz.questions.length) return;
+    const qs = quiz.questions.slice();
+    [qs[i], qs[j]] = [qs[j], qs[i]];
+    set({ questions: qs });
+  };
+  const pickItem = (k) => set({ itemKey: k, itemMax: k ? (items.find((i) => i.k === k) || {}).max ?? null : null });
+  const students = Object.entries(records).filter(([, r]) => r.sec === quiz.sec).map(([key, r]) => [key, r]).sort((a, b) => a[1].name.localeCompare(b[1].name));
+  const taken = attempts.length;
+  const save = async (publish) => {
+    const next = { ...quiz, published: publish == null ? quiz.published : publish };
+    const problems = quizProblems(next);
+    if (problems.length) return setMsg(problems.join(" "));
+    try {
+      await saveQuiz(db, id, next);
+      setQuiz(next);
+      setMsg(next.published ? "Saved. Students can see this quiz." : "Saved as a draft. Students cannot see it yet.");
+      if (isNew) onDone();
+    } catch (e) { setMsg("Not saved: " + e.message); }
+  };
+  const remove = async () => {
+    if (!window.confirm('Delete the quiz "' + (quiz.title || "untitled") + '"' + (taken ? " and the " + taken + " attempt" + (taken === 1 ? "" : "s") + " recorded for it" : "") + "? Scores already in the grades stay. This cannot be undone.")) return;
+    try { await deleteQuiz(db, id); onDone(); } catch (e) { setMsg("Not deleted: " + e.message); }
+  };
+  return (
+    <details className="card" open={isNew || undefined}>
+      <summary><strong>{quiz.title || "New quiz"}</strong> <span className="tag">{quiz.published ? "Published" : "Draft"}</span> <span className="muted small">{quiz.questions.length} question{quiz.questions.length === 1 ? "" : "s"} · {fmtNum(totalPoints(quiz.questions))} pts{taken ? " · " + taken + " attempt" + (taken === 1 ? "" : "s") : ""}</span></summary>
+      <div className="form-grid">
+        <label className="span2"><Icon name="tag" /> Title<input value={quiz.title} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. Quiz 1: Arrays" /></label>
+        <label><Icon name="grades" /> Record the score in
+          <select value={quiz.itemKey || ""} onChange={(e) => pickItem(e.target.value)}>
+            <option value="">Do not record in grades</option>
+            {items.map((i) => <option key={i.k} value={i.k}>{i.cat} – {i.label} (max {fmtNum(i.max)})</option>)}
+          </select>
+        </label>
+        <label><Icon name="clock" /> Time limit (minutes, empty = none)<input type="number" min="1" max="600" value={quiz.timeLimit || ""} onChange={(e) => set({ timeLimit: e.target.value ? Number(e.target.value) : null })} /></label>
+      </div>
+      <fieldset className="card" style={{ margin: "0 0 12px" }}>
+        <legend><strong><Icon name="lock" /> Anti-cheat</strong></legend>
+        <label className="inline"><input type="checkbox" checked={quiz.shuffle} onChange={(e) => set({ shuffle: e.target.checked })} /> Shuffle questions and choices for each student</label>
+        <label className="inline"><input type="checkbox" checked={quiz.lockdown} onChange={(e) => set({ lockdown: e.target.checked })} /> Record leaving the page, copying and pasting, and block them</label>
+        {quiz.lockdown && <label className="inline">Auto-submit after <input className="short" type="number" min="1" max="20" value={quiz.maxViolations} onChange={(e) => set({ maxViolations: Math.max(1, Number(e.target.value) || 1) })} /> warnings</label>}
+        <p className="muted small">The time limit and the scoring are enforced on the server and every student gets one attempt. Warnings are what the browser can notice, so they are evidence for you to judge, not proof: a student can still use a second device.</p>
+      </fieldset>
+      {quiz.questions.map((q, i) => (
+        <QuestionEditor key={q.id} q={q} n={i} onChange={(nq) => setQ(i, nq)} onMove={(d) => move(i, d)}
+          onRemove={() => set({ questions: quiz.questions.filter((_, j) => j !== i) })} />
+      ))}
+      <p className="row">
+        <button type="button" className="btn small" onClick={() => set({ questions: [...quiz.questions, blankQuestion("mc")] })}><Icon name="plus" /> Multiple choice</button>
+        <button type="button" className="btn small" onClick={() => set({ questions: [...quiz.questions, blankQuestion("tf")] })}><Icon name="plus" /> True / false</button>
+      </p>
+      {taken > 0 && <p className="banner info"><Icon name="info" /> {taken} student{taken === 1 ? " has" : "s have"} already started this quiz. Changing questions now affects how later attempts are scored; allow retakes if you change the answers.</p>}
+      {quiz.itemKey && quiz.itemMax != null && <p className="muted small">The score is scaled to the item's maximum of {fmtNum(quiz.itemMax)} (a student with 8 of 10 points gets {fmtNum(Math.round(0.8 * quiz.itemMax * 100) / 100)}).</p>}
+      <div className="row">
+        <button type="button" className="btn primary" onClick={() => save(null)}><Icon name="save" /> Save</button>
+        <button type="button" className="btn" onClick={() => save(!quiz.published)}><Icon name={quiz.published ? "eye" : "upload"} /> {quiz.published ? "Unpublish" : "Save & publish"}</button>
+        <button type="button" className="btn danger" onClick={remove}><Icon name="trash" /> Delete quiz</button>
+        {msg && <span className="small" role="status">{msg}</span>}
+      </div>
+      {!isNew && (
+        <>
+          <h2 style={{ marginTop: 16 }}><Icon name="users" /> Results</h2>
+          <Results db={db} quiz={quiz} quizId={id} students={students} attempts={attempts} />
+        </>
+      )}
+    </details>
+  );
+}
+
+export default function QuizzesTab({ db, sections, quizzes, attempts, records }) {
+  const picker = useSectionPicker(sections);
+  const secId = picker.activeId;
+  const [draft, setDraft] = useState(null);
+  const list = Object.entries(quizzes || {}).filter(([, q]) => q.sec === secId).sort((a, b) => (a[1].updated || 0) - (b[1].updated || 0));
+  const attemptsOf = (qid) => Object.values(attempts || {}).filter((a) => a.quizId === qid);
+  return (
+    <>
+      <div className="row toolbar">
+        <SectionPicker picker={picker} sections={sections} />
+        <button type="button" className="btn primary" disabled={!secId || !!draft} onClick={() => setDraft({ id: newQuizId(), quiz: blankQuiz(secId) })}><Icon name="plus" /> New quiz</button>
+      </div>
+      {Object.keys(sections).length === 0 && <p className="muted">No sections yet. Add one in Settings first.</p>}
+      {draft && draft.quiz.sec === secId && (
+        <QuizEditor key={draft.id} db={db} id={draft.id} initial={draft.quiz} section={sections[secId]} roster={{}} records={records} attempts={[]} isNew onDone={() => setDraft(null)} />
+      )}
+      {secId && list.length === 0 && !draft && <p className="muted">No quizzes in this section yet. Press "New quiz" to build one.</p>}
+      {list.map(([id, q]) => (
+        <QuizEditor key={id} db={db} id={id} initial={q} section={sections[secId]} roster={{}} records={records} attempts={attemptsOf(id)} onDone={() => {}} />
+      ))}
+    </>
+  );
+}

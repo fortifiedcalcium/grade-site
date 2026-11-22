@@ -6,6 +6,7 @@ import { computeGrade, hasValue, isNum, usableScale } from "../lib/grading.js";
 import { fmt2, fmtNum, fmtDate } from "../lib/util.js";
 import { studentNo } from "../lib/keys.js";
 import { termOf } from "../lib/terms.js";
+import QuizPanel from "./QuizPanel.jsx";
 
 const ERRORS = {
   nomatch: "We couldn't find a record with that student number and PIN. Check both and try again.",
@@ -20,7 +21,7 @@ const TABS = [
 ];
 
 /* Same frame as the instructor page: header with the logo, tab bar, then cards and grid tables. */
-export function GradeView({ data, onRefresh, onLogout, onAcknowledge, onSwitch = () => {}, busy, initialTab = "summary" }) {
+export function GradeView({ data, onRefresh, onLogout, onAcknowledge, onSwitch = () => {}, busy, initialTab = "summary", quizApi, onQuizSubmitted }) {
   const { record, section, meta } = data;
   const [tab, setTab] = useState(initialTab);
   const view = useMemo(() => {
@@ -51,10 +52,12 @@ export function GradeView({ data, onRefresh, onLogout, onAcknowledge, onSwitch =
         </div>
       </header>
       <nav className="tabs" role="tablist">
-        {TABS.map(([id, label, icon]) => (
+        {(quizApi ? [...TABS, ["quizzes", "Quizzes", "quiz"]] : TABS).map(([id, label, icon]) => (
           <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}><Icon name={icon} /> {label}</button>
         ))}
       </nav>
+
+      {tab === "quizzes" && quizApi && <QuizPanel quizApi={quizApi} quizKey={data.key} onSubmitted={onQuizSubmitted} />}
 
       {tab === "summary" && (
         <>
@@ -217,6 +220,13 @@ export default function StudentPortal() {
     setError("");
   };
 
+  const quizApi = useMemo(() => data && ({
+    list: () => api.quizzes(data.key),
+    start: (qid) => api.startQuiz(data.key, qid),
+    submit: (qid, answers) => api.submitQuiz(data.key, qid, answers),
+    event: (qid, type) => api.quizEvent(data.key, qid, type),
+  }), [api, data && data.key]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (data) {
     return (
       <>
@@ -225,6 +235,8 @@ export default function StudentPortal() {
           onRefresh={() => run(async () => keepOthers(await api.refresh(data.key)))}
           onSwitch={(key) => run(async () => keepOthers(await api.refresh(key)))}
           onAcknowledge={() => run(async () => { await api.acknowledge(data.key); return keepOthers(await api.refresh(data.key)); })}
+          quizApi={quizApi}
+          onQuizSubmitted={() => run(async () => keepOthers(await api.refresh(data.key)))}
           onLogout={logout} />
       </>
     );

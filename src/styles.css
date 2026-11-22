@@ -249,3 +249,12 @@ input.cell.over { border-color: var(--danger); border-width: var(--bw); } input.
 .btn .icon, .tabs button .icon { margin-right: 2px; }
 .btn:has(> .icon:only-child) .icon { margin-right: 0; }
 .error .icon, .banner .icon { vertical-align: -0.2em; }
+
+/* quizzes */
+.quiz-lock { -webkit-user-select: none; user-select: none; }
+.quiz-bar { position: sticky; top: 48px; z-index: 5; }
+.quiz-opts { display: grid; gap: 8px; }
+.quiz-opt { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: var(--bw-s) solid var(--ink); background: var(--surface); cursor: pointer; font-weight: 600; }
+.quiz-opt:hover { background: var(--info); color: var(--on-bright); }
+.tag.warn { background: var(--danger); color: var(--on-danger); }
+.qedit { border: var(--bw-s) solid var(--ink); padding: 10px; margin: 10px 0; background: var(--bg); }
