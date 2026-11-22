@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import Icon from "../../Icon.jsx";
-import { termOf, termsOf, nextTerm, LEGACY_TERM } from "../../lib/terms.js";
+import { termOf, termsOf, nextTerm, termChoices, LEGACY_TERM } from "../../lib/terms.js";
+import TermSelect from "../../lib/TermSelect.jsx";
 import { rememberTerm } from "../../lib/sectionPicker.jsx";
 import { startSemester, addSection, clearSectionScores, deleteSection, newCategoryId, newItemKey, saveMeta, saveSection } from "../../lib/db.js";
 
@@ -50,7 +51,7 @@ function SectionEditor({ db, id, section, roster, terms }) {
     <details className="card">
       <summary><strong>{s.name}</strong> <span className="tag">{termOf(s)}</span></summary>
       <div className="form-grid">
-        <label><Icon name="calendar" /> Semester<input list="terms-list" value={s.term == null ? termOf(s) : s.term} onChange={(e) => setS({ ...s, term: e.target.value })} /></label>
+        <label><Icon name="calendar" /> Semester<TermSelect value={s.term == null ? termOf(s) : s.term} known={terms} onChange={(v) => setS({ ...s, term: v })} /></label>
         <label><Icon name="book" /> Subject code<input value={s.subject.code || ""} onChange={(e) => setS({ ...s, subject: { ...s.subject, code: e.target.value } })} /></label>
         <label><Icon name="book" /> Subject description<input value={s.subject.desc || ""} onChange={(e) => setS({ ...s, subject: { ...s.subject, desc: e.target.value } })} /></label>
         <label><Icon name="user" /> Instructor<input value={s.instructor || ""} onChange={(e) => setS({ ...s, instructor: e.target.value })} /></label>
@@ -104,7 +105,9 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
   const [newTerm, setNewTerm] = useState(() => terms[0] || LEGACY_TERM);
   const untagged = Object.entries(sections).filter(([, x]) => !String(x.term || "").trim());
   const [tagMsg, setTagMsg] = useState("");
-  const [fresh, setFresh] = useState(() => nextTerm(terms[0]));
+  const freshChoices = termChoices(terms, { exclude: terms });
+  const [freshPick, setFresh] = useState(() => (freshChoices.includes(nextTerm(terms[0])) ? nextTerm(terms[0]) : ""));
+  const fresh = freshChoices.includes(freshPick) ? freshPick : "";
   const [freshMsg, setFreshMsg] = useState("");
   const beginSemester = async (e) => {
     e.preventDefault();
@@ -139,7 +142,7 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
         <h2><Icon name="settings" /> Page details</h2>
         <div className="form-grid">
           <label><Icon name="tag" /> Title<input value={m.title} onChange={(e) => setM({ ...m, title: e.target.value })} /></label>
-          <label><Icon name="calendar" /> Term<input value={m.term} onChange={(e) => setM({ ...m, term: e.target.value })} /></label>
+          <label><Icon name="calendar" /> Term shown to students<TermSelect value={m.term} blank="None" known={terms} onChange={(v) => setM({ ...m, term: v })} /></label>
           <label className="span2"><Icon name="note" /> Note shown to students<input value={m.note} onChange={(e) => setM({ ...m, note: e.target.value })} /></label>
         </div>
         <button className="btn primary"><Icon name="save" /> Save</button> {msg && <span className="small">{msg}</span>}
@@ -158,8 +161,8 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
         </table>
         <form className="row" onSubmit={beginSemester}>
           <strong>Start a new semester</strong>
-          <input aria-label="New semester" list="terms-list" value={fresh} onChange={(e) => setFresh(e.target.value)} placeholder="e.g. 2026-2027 2nd Semester" />
-          <button className="btn primary"><Icon name="plus" /> Start fresh</button>
+          <TermSelect label="New semester" value={fresh} known={[]} exclude={terms} onChange={setFresh} />
+          <button className="btn primary" disabled={!fresh}><Icon name="plus" /> Start fresh</button>
           <span className="muted small">Copies your sections' subjects and grading schemes with no students or scores. Earlier semesters stay untouched.</span>
           {freshMsg && <span className="small" role="status">{freshMsg}</span>}
         </form>
@@ -174,8 +177,7 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
       <h2><Icon name="users" /> Sections</h2>
       <form className="card row" onSubmit={createSection}>
         <strong>Add a section</strong>
-        <input aria-label="Semester of the new section" list="terms-list" placeholder="Semester, e.g. 2026-2027 2nd Semester" value={newTerm} onChange={(e) => setNewTerm(e.target.value)} />
-        <datalist id="terms-list">{terms.map((t) => <option key={t} value={t} />)}</datalist>
+        <TermSelect label="Semester of the new section" value={newTerm} known={terms} onChange={setNewTerm} />
         <input aria-label="New section name" placeholder="Section name, e.g. BSIT 3-A" value={newName} onChange={(e) => setNewName(e.target.value)} />
         <button className="btn primary"><Icon name="plus" /> Add section</button>
         {secMsg && <span className="small" role="status">{secMsg}</span>}

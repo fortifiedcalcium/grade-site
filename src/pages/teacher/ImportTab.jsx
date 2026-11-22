@@ -3,6 +3,7 @@ import Icon from "../../Icon.jsx";
 import { sheetsFromWorkbook, parseClassRecord } from "../../lib/importer.js";
 import { importData } from "../../lib/db.js";
 import { LEGACY_TERM, termsOf } from "../../lib/terms.js";
+import TermSelect from "../../lib/TermSelect.jsx";
 
 export default function ImportTab({ db, meta, sections, roster, takenIds }) {
   const [parsed, setParsed] = useState(null);
@@ -84,10 +85,8 @@ export default function ImportTab({ db, meta, sections, roster, takenIds }) {
           )}
           <div className="form-grid">
             <label><Icon name="tag" /> Page title<input value={details.title} onChange={(e) => setDetails({ ...details, title: e.target.value })} /></label>
-            <label><Icon name="calendar" /> Semester of these sections<input list="import-terms" value={term} onChange={(e) => setTerm(e.target.value)} />
-              <datalist id="import-terms">{knownTerms.map((t) => <option key={t} value={t} />)}</datalist>
-            </label>
-            <label><Icon name="calendar" /> Term shown to students<input value={details.term} onChange={(e) => setDetails({ ...details, term: e.target.value })} /></label>
+            <label><Icon name="calendar" /> Semester of these sections<TermSelect value={term} known={knownTerms} onChange={setTerm} /></label>
+            <label><Icon name="calendar" /> Term shown to students<TermSelect value={details.term} blank="None" known={knownTerms} onChange={(v) => setDetails({ ...details, term: v })} /></label>
             <label className="span2"><Icon name="note" /> Note shown to students<input value={details.note} onChange={(e) => setDetails({ ...details, note: e.target.value })} /></label>
           </div>
           <label className="inline"><input type="checkbox" checked={removeMissing} onChange={(e) => setRemoveMissing(e.target.checked)} /> Delete students of this semester that are in the database but not in this file</label>

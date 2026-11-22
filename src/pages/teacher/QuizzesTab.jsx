@@ -1,10 +1,11 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import Icon from "../../Icon.jsx";
 import { SectionPicker, useSectionPicker } from "../../lib/sectionPicker.jsx";
-import { blankQuestion, blankQuiz, newQuizId, quizProblems, totalPoints } from "../../lib/quiz.js";
+import { QUIZ_TEMPLATE_ROWS, blankQuestion, blankQuiz, newQuizId, parseQuizRows, quizProblems, totalPoints } from "../../lib/quiz.js";
 import { deleteQuiz, resetQuizAttempt, saveQuiz } from "../../lib/db.js";
 import { studentNo } from "../../lib/keys.js";
-import { fmtNum } from "../../lib/util.js";
+import { csvCell, downloadText, fmtNum } from "../../lib/util.js";
+import { sheetsFromWorkbook } from "../../lib/importer.js";
 
 const EVENT_LABEL = { "left-page": "left the page", copy: "copied", cut: "cut", paste: "pasted", "screenshot-key": "pressed PrintScreen" };
 const when = (t) => (t ? new Date(t).toLocaleString() : "");
@@ -92,6 +93,8 @@ function Results({ db, quiz, quizId, students, attempts }) {
 function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew, onDone }) {
   const [quiz, setQuiz] = useState(() => JSON.parse(JSON.stringify(initial)));
   const [msg, setMsg] = useState("");
+  const [importMsg, setImportMsg] = useState({ ok: true, text: "" });
+  const fileRef = useRef(null);
   const items = ((section && section.scheme && section.scheme.categories) || []).flatMap((c) => (c.items || []).map((i) => ({ ...i, cat: c.title })));
   const set = (patch) => setQuiz({ ...quiz, ...patch });
   const setQ = (i, q) => set({ questions: quiz.questions.map((x, j) => (j === i ? q : x)) });
@@ -105,6 +108,24 @@ function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew
   const pickItem = (k) => set({ itemKey: k, itemMax: k ? (items.find((i) => i.k === k) || {}).max ?? null : null });
   const students = Object.entries(records).filter(([, r]) => r.sec === quiz.sec).map(([key, r]) => [key, r]).sort((a, b) => a[1].name.localeCompare(b[1].name));
   const taken = attempts.length;
+  /* Questions and answers from a .xlsx or .csv file are added after the questions already in the quiz. */
+  const onFile = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const XLSX = await import("xlsx");
+      const sheet = sheetsFromWorkbook(XLSX, await f.arrayBuffer(), "array").find((x) => !x.hidden);
+      const { questions, errors } = parseQuizRows(sheet ? sheet.aoa : []);
+      if (!questions.length) return setImportMsg({ ok: false, text: errors.join(" ") });
+      const kept = quiz.questions.filter((q) => String(q.text || "").trim());   // drops the empty starter question
+      set({ questions: [...kept, ...questions] });
+      setImportMsg({ ok: !errors.length, text: "Added " + questions.length + " question" + (questions.length === 1 ? "" : "s") + " from " + f.name + ". Review them, then Save." + (errors.length ? " Skipped: " + errors.join(" ") : "") });
+    } catch (err) {
+      setImportMsg({ ok: false, text: "Could not read that file. Use a .xlsx or .csv file." });
+    }
+  };
+  const template = () => downloadText("quiz-template.csv", QUIZ_TEMPLATE_ROWS.map((r) => r.map(csvCell).join(",")).join("\n"));
   const save = async (publish) => {
     const next = { ...quiz, published: publish == null ? quiz.published : publish };
     const problems = quizProblems(next);
@@ -147,7 +168,12 @@ function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew
       <p className="row">
         <button type="button" className="btn small" onClick={() => set({ questions: [...quiz.questions, blankQuestion("mc")] })}><Icon name="plus" /> Multiple choice</button>
         <button type="button" className="btn small" onClick={() => set({ questions: [...quiz.questions, blankQuestion("tf")] })}><Icon name="plus" /> True / false</button>
+        <button type="button" className="btn small" onClick={() => fileRef.current && fileRef.current.click()}><Icon name="import" /> Import questions</button>
+        <button type="button" className="btn small" onClick={template}><Icon name="download" /> Template</button>
+        <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" aria-label="Import questions file" onChange={onFile} hidden />
       </p>
+      <p className="muted small">Import from a spreadsheet (.xlsx or .csv) with the columns Question, Type (MC or TF, optional), A, B, C, D…, Answer (the letter, or True/False) and Points (optional). Download the template to see the layout.</p>
+      {importMsg.text && <p className={importMsg.ok ? "banner info" : "banner"} role="status"><Icon name={importMsg.ok ? "info" : "alert"} /> {importMsg.text}</p>}
       {taken > 0 && <p className="banner info"><Icon name="info" /> {taken} student{taken === 1 ? " has" : "s have"} already started this quiz. Changing questions now affects how later attempts are scored; allow retakes if you change the answers.</p>}
       {quiz.itemKey && quiz.itemMax != null && <p className="muted small">The score is scaled to the item's maximum of {fmtNum(quiz.itemMax)} (a student with 8 of 10 points gets {fmtNum(Math.round(0.8 * quiz.itemMax * 100) / 100)}).</p>}
       <div className="row">

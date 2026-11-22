@@ -52,3 +52,14 @@ export function nextTerm(term) {
   if (!m) return "";
   return m[3].toLowerCase() === "1st" ? m[1] + "-" + m[2] + " 2nd Semester" : Number(m[1]) + 1 + "-" + (Number(m[2]) + 1) + " 1st Semester";
 }
+
+/* The semesters offered in a dropdown, newest first: every term already in use, plus 1st Semester, 2nd Semester and Summer of
+   the school years around today (a school year starts in June). `exclude` hides terms that cannot be picked, for example ones
+   that already exist when starting a new semester. */
+export function termChoices(known = [], { exclude = [], today = new Date() } = {}) {
+  const start = today.getMonth() >= 5 ? today.getFullYear() : today.getFullYear() - 1;
+  const made = [];
+  for (let y = start - 3; y <= start + 2; y++) for (const part of ["1st Semester", "2nd Semester", "Summer"]) made.push(y + "-" + (y + 1) + " " + part);
+  const skip = new Set(exclude);
+  return [...new Set([...known.filter(Boolean), ...made])].filter((t) => !skip.has(t)).sort(compareTerms);
+}

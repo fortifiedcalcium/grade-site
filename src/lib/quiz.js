@@ -73,3 +73,63 @@ export const fmtClock = (ms) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
   return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 };
+
+/* ---------------------------------------------------------------- import
+   Reads questions and answers from a sheet (rows of cells, header row first). Columns, in any order, matched by header:
+     Question | Type (optional: MC or TF) | A, B, C, D ... (choices) | Answer | Points (optional, default 1)
+   Answer is the letter of the right choice (B), or its text, or True/False for a true/false question.
+   Returns { questions, errors }; a row with a problem is skipped and named in errors. */
+const cell = (v) => (v == null ? "" : String(v).trim());
+const LETTERS = "ABCDEFGH";
+
+export const QUIZ_TEMPLATE_ROWS = [
+  ["Question", "Type", "A", "B", "C", "D", "Answer", "Points"],
+  ["What is 2 + 2?", "MC", "3", "4", "5", "6", "B", 1],
+  ["The sky is green.", "TF", "", "", "", "", "False", 1],
+];
+
+export function parseQuizRows(rows) {
+  const errors = [];
+  const head = (rows || []).findIndex((r) => (r || []).some((c) => /^question/i.test(cell(c))));
+  if (head < 0) return { questions: [], errors: ['Put a header row first, with a "Question" column, choice columns A, B, C, D, and an "Answer" column.'] };
+  const H = rows[head].map(cell);
+  const col = (re) => H.findIndex((h) => re.test(h));
+  const qC = col(/^question/i), tC = col(/^type/i), aC = col(/^(correct\s*)?(answer|key)\b/i), pC = col(/^(points?|pts)\b/i);
+  const choiceCols = [];
+  H.forEach((h, i) => {
+    const m = /^(?:choice|option)?\s*([a-h])$/i.exec(h) || /^(?:choice|option)\s*([1-8])$/i.exec(h);
+    if (m) choiceCols.push([i, /\d/.test(m[1]) ? Number(m[1]) - 1 : LETTERS.indexOf(m[1].toUpperCase())]);
+  });
+  if (aC < 0) return { questions: [], errors: ['There is no "Answer" column.'] };
+  const questions = [];
+  rows.slice(head + 1).forEach((r, k) => {
+    const row = r || [];
+    const text = cell(row[qC]);
+    if (!text) return;
+    const where = "Row " + (head + k + 2);
+    const raw = cell(row[aC]);
+    const slots = [];   // choice text by letter position, empty ones kept so "B" still means column B
+    choiceCols.forEach(([i, pos]) => { slots[pos] = cell(row[i]); });
+    const filled = slots.map((t, pos) => ({ t: t || "", pos })).filter((x) => x.t);
+    const typeWord = cell(row[tC]).toLowerCase();
+    const isTf = /^(tf|t\/f|true.?or.?false|true.?false|boolean)$/.test(typeWord) || (!typeWord && filled.length === 0 && /^(true|false|t|f)$/i.test(raw));
+    const points = pC >= 0 && cell(row[pC]) !== "" ? Number(cell(row[pC])) : 1;
+    if (!(points > 0)) return errors.push(where + ": points must be a number above 0.");
+    if (isTf) {
+      if (/^(true|t|yes)$/i.test(raw)) questions.push({ id: newId(), type: "tf", text, points, answer: true });
+      else if (/^(false|f|no)$/i.test(raw)) questions.push({ id: newId(), type: "tf", text, points, answer: false });
+      else errors.push(where + ': a true/false question needs "True" or "False" as its answer.');
+      return;
+    }
+    if (filled.length < 2) return errors.push(where + ": a multiple choice question needs at least two choices.");
+    let at = -1;
+    if (/^[a-h]$/i.test(raw) && slots[LETTERS.indexOf(raw.toUpperCase())]) at = filled.findIndex((x) => x.pos === LETTERS.indexOf(raw.toUpperCase()));
+    if (at < 0) at = filled.findIndex((x) => x.t.toLowerCase() === raw.toLowerCase());
+    if (at < 0 && /^[1-8]$/.test(raw)) at = filled.findIndex((x) => x.pos === Number(raw) - 1);
+    if (at < 0) return errors.push(where + ': the answer "' + raw + '" is not one of the choices.');
+    questions.push({ id: newId(), type: "mc", text, points, choices: filled.map((x) => x.t), answer: at });
+  });
+  if (!questions.length && !errors.length) errors.push("No questions found below the header row.");
+  return { questions, errors };
+}
+const newId = () => "n" + Math.random().toString(36).slice(2, 9);
