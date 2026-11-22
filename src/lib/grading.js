@@ -62,3 +62,18 @@ export function computeGrade(scheme, scores) {
   const passEquiv = isNum(scheme.passEquiv) ? scheme.passEquiv : 3;
   return { cats, total, equiv, remarks: equiv <= passEquiv ? "Passed" : "Failed", pending, finalRecorded };
 }
+
+/* The class record lays its columns out as Activities, Quizzes, Project, Attendance, then the term exams (Midterm, Final).
+   Sections made earlier, or imported with another order, keep their stored order; screens and exports use this one so every
+   section reads the same way. Categories it does not recognise go after Attendance, in their stored order. */
+const RECORD_ORDER = [[/activit/i, 0], [/quiz/i, 1], [/proj/i, 2], [/attend/i, 3], [/mid/i, 5], [/final/i, 6], [/exam/i, 5]];
+export function recordRank(cat) {
+  const text = (cat.id || "") + " " + (cat.title || "");
+  const hit = RECORD_ORDER.find(([re]) => re.test(text));
+  return hit ? hit[1] : 4;
+}
+export function orderedCategories(scheme) {
+  return ((scheme && scheme.categories) || []).map((c, i) => [c, i]).sort((a, b) => recordRank(a[0]) - recordRank(b[0]) || a[1] - b[1]).map(([c]) => c);
+}
+/* A section whose scheme lists its categories in class record order (nothing else changes). */
+export const inRecordOrder = (section) => (section && section.scheme ? { ...section, scheme: { ...section.scheme, categories: orderedCategories(section.scheme) } } : section);

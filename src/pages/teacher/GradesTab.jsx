@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import Icon from "../../Icon.jsx";
-import { computeGrade, isNum } from "../../lib/grading.js";
+import { computeGrade, inRecordOrder, isNum } from "../../lib/grading.js";
 import { studentNo } from "../../lib/keys.js";
 import { SectionPicker, useSectionPicker } from "../../lib/sectionPicker.jsx";
 import { addStudent, clearSectionScores, removeStudent, removeStudents, saveScore } from "../../lib/db.js";
@@ -64,7 +64,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
   const [showFinal, setShowFinal] = useState(true);
   // the column picker starts open on wide screens and folded away on phones, where space is tight
   const [colsOpen, setColsOpen] = useState(() => !window.matchMedia || window.matchMedia("(min-width: 900px)").matches);
-  const sec = sections[picker.activeId] || null;
+  const sec = useMemo(() => inRecordOrder(sections[picker.activeId]) || null, [sections, picker.activeId]);   // columns in class record order
   const activeId = picker.activeId;
 
   const graded = useMemo(() => {

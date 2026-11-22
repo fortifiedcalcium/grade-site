@@ -5,6 +5,7 @@ import { QUIZ_TEMPLATE_ROWS, blankQuestion, blankQuiz, newQuizId, parseQuizRows,
 import { deleteQuiz, resetQuizAttempt, saveQuiz } from "../../lib/db.js";
 import { studentNo } from "../../lib/keys.js";
 import { csvCell, downloadText, fmtNum } from "../../lib/util.js";
+import { orderedCategories } from "../../lib/grading.js";
 import { sheetsFromWorkbook } from "../../lib/importer.js";
 import { parseQuizDocx } from "../../lib/quizdoc.js";
 
@@ -96,7 +97,7 @@ function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew
   const [msg, setMsg] = useState("");
   const [importMsg, setImportMsg] = useState({ ok: true, text: "" });
   const fileRef = useRef(null);
-  const items = ((section && section.scheme && section.scheme.categories) || []).flatMap((c) => (c.items || []).map((i) => ({ ...i, cat: c.title })));
+  const items = orderedCategories(section && section.scheme).flatMap((c) => (c.items || []).map((i) => ({ ...i, cat: c.title })));
   const set = (patch) => setQuiz({ ...quiz, ...patch });
   const setQ = (i, q) => set({ questions: quiz.questions.map((x, j) => (j === i ? q : x)) });
   const move = (i, d) => {

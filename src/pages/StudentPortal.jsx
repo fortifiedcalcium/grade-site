@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import Icon from "../Icon.jsx";
 import { getDb } from "../supabase.js";
 import { createStudentApi } from "../lib/db.js";
-import { computeGrade, hasValue, isNum, usableScale } from "../lib/grading.js";
+import { computeGrade, hasValue, inRecordOrder, isNum, usableScale } from "../lib/grading.js";
 import { fmt2, fmtNum, fmtDate } from "../lib/util.js";
 import { studentNo } from "../lib/keys.js";
 import { termOf } from "../lib/terms.js";
@@ -26,7 +26,8 @@ export function GradeView({ data, onRefresh, onLogout, onAcknowledge, onSwitch =
   const [tab, setTab] = useState(initialTab);
   const view = useMemo(() => {
     if (!section || !section.scheme) return null;
-    return { grade: computeGrade(section.scheme, record.s), scheme: section.scheme };
+    const ordered = inRecordOrder(section).scheme;   // Activities, Quizzes, Project, Attendance, Midterm, Final
+    return { grade: computeGrade(ordered, record.s), scheme: ordered };
   }, [record, section]);
 
   return (

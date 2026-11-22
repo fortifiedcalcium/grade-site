@@ -126,3 +126,20 @@ describe("incomplete grade equivalent table", () => {
     expect(usableScale(custom)).toBe(custom);
   });
 });
+
+describe("class record column order", () => {
+  it("shows Activities first and the exams last, whatever order the section was saved in", async () => {
+    const { orderedCategories, inRecordOrder } = await import("../src/lib/grading.js");
+    const cat = (id, title) => ({ id, title, weight: 10, items: [{ k: id + "1", label: title, max: 100 }] });
+    // the order the app used before the class record template: exams, attendance, activities, project, quizzes
+    const old = { categories: [cat("exams", "Term Examinations"), cat("attendance", "Attendance / Participation"), cat("activities", "Activities"), cat("project", "Project"), cat("quizzes", "Quizzes")] };
+    expect(orderedCategories(old).map((c) => c.id)).toEqual(["activities", "quizzes", "project", "attendance", "exams"]);
+    // an imported sheet: Midterm and Final as separate categories, plus one the app does not know
+    const imp = { categories: [cat("final", "Final Exam"), cat("lab", "Laboratory"), cat("midterm", "Midterm Exam"), cat("quizzes", "Quizzes"), cat("activities", "Activities")] };
+    expect(orderedCategories(imp).map((c) => c.id)).toEqual(["activities", "quizzes", "lab", "midterm", "final"]);
+    // grades do not change, only the order
+    const sec = { scheme: { ...old, scale: [], passEquiv: 3 } };
+    expect(computeGrade(inRecordOrder(sec).scheme, { activities1: 100 }).total).toBe(computeGrade(sec.scheme, { activities1: 100 }).total);
+    expect(old.categories[0].id).toBe("exams");   // the saved scheme is not modified
+  });
+});
