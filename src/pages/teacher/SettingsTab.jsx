@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import Icon from "../../Icon.jsx";
-import { termOf, termsOf, nextTerm, termChoices, LEGACY_TERM } from "../../lib/terms.js";
+import { termOf, termsOf, LEGACY_TERM } from "../../lib/terms.js";
 import TermSelect from "../../lib/TermSelect.jsx";
-import { rememberTerm } from "../../lib/sectionPicker.jsx";
-import { startSemester, addSection, clearSectionScores, deleteSection, newCategoryId, newItemKey, saveMeta, saveSection } from "../../lib/db.js";
+import { recalledTerm, rememberTerm } from "../../lib/sectionPicker.jsx";
+import { addSection, clearSectionScores, deleteSection, newCategoryId, newItemKey, saveMeta, saveSection } from "../../lib/db.js";
+
+const ALL = "__all";
 
 function SectionEditor({ db, id, section, roster, terms }) {
   const [s, setS] = useState(() => JSON.parse(JSON.stringify(section)));
@@ -105,21 +107,15 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
   const [newTerm, setNewTerm] = useState(() => terms[0] || LEGACY_TERM);
   const untagged = Object.entries(sections).filter(([, x]) => !String(x.term || "").trim());
   const [tagMsg, setTagMsg] = useState("");
-  const freshChoices = termChoices(terms, { exclude: terms });
-  const [freshPick, setFresh] = useState(() => (freshChoices.includes(nextTerm(terms[0])) ? nextTerm(terms[0]) : ""));
-  const fresh = freshChoices.includes(freshPick) ? freshPick : "";
-  const [freshMsg, setFreshMsg] = useState("");
-  const beginSemester = async (e) => {
-    e.preventDefault();
-    setFreshMsg("");
-    const sem = fresh.trim();
-    if (!window.confirm('Start "' + sem + '"?\n\nEvery section of ' + terms[0] + ' is copied (subject and grading scheme only) with no students and no scores. ' + terms[0] + ' stays as it is.')) return;
-    try {
-      const n = await startSemester(db, sections, sem, takenIds);
-      rememberTerm(sem);
-      setFreshMsg(sem + " started with " + n + " empty section" + (n === 1 ? "" : "s") + ". Import or add students into it; the Grades tab now shows it.");
-    } catch (err) { setFreshMsg(err.message); }
-  };
+  // which semester's sections are listed below ("" = every semester); starts on the newest, or the one picked on another tab
+  const [showTermPick, setShowTerm] = useState(() => (terms.includes(recalledTerm()) ? recalledTerm() : terms[0] || ""));
+  const showTerm = showTermPick === ALL || terms.includes(showTermPick) ? showTermPick : terms[0] || ALL;
+  const pickShown = (t) => { setShowTerm(t); setSecPick(""); if (t !== ALL) rememberTerm(t); };
+  const inTerm = Object.keys(sections).filter((id) => showTerm === ALL || termOf(sections[id]) === showTerm)
+    .sort((a, b) => String(sections[a].name || a).localeCompare(String(sections[b].name || b), undefined, { numeric: true }));
+  const [secPick, setSecPick] = useState("");   // "" = every section of the semester
+  const oneSection = inTerm.includes(secPick) ? secPick : "";
+  const shownIds = oneSection ? [oneSection] : inTerm;
   const tagAll = async () => {
     setTagMsg("");
     try {
@@ -134,7 +130,7 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
   const createSection = async (e) => {
     e.preventDefault();
     setSecMsg("");
-    try { await addSection(db, sections, newName, newTerm, takenIds); setNewName(""); setSecMsg("Section added. Open it below to set its grading scheme."); } catch (err) { setSecMsg(err.message); }
+    try { await addSection(db, sections, newName, newTerm, takenIds); setNewName(""); pickShown(newTerm.trim()); setSecMsg("Section added. Open it below to set its grading scheme."); } catch (err) { setSecMsg(err.message); }
   };
   return (
     <>
@@ -159,13 +155,6 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
             })}
           </tbody>
         </table>
-        <form className="row" onSubmit={beginSemester}>
-          <strong>Start a new semester</strong>
-          <TermSelect label="New semester" value={fresh} known={[]} exclude={terms} onChange={setFresh} />
-          <button className="btn primary" disabled={!fresh}><Icon name="plus" /> Start fresh</button>
-          <span className="muted small">Copies your sections' subjects and grading schemes with no students or scores. Earlier semesters stay untouched.</span>
-          {freshMsg && <span className="small" role="status">{freshMsg}</span>}
-        </form>
         {untagged.length > 0 && (
           <p className="row">
             <span className="small">{untagged.length} section{untagged.length === 1 ? "" : "s"} saved before semesters existed {untagged.length === 1 ? "is" : "are"} filed under {LEGACY_TERM}.</span>
@@ -183,7 +172,24 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
         {secMsg && <span className="small" role="status">{secMsg}</span>}
       </form>
       {Object.keys(sections).length === 0 && <p className="muted">No sections yet. Add one above or import a class record.</p>}
-      {Object.entries(sections).map(([id, sec]) => <SectionEditor key={id} db={db} id={id} section={sec} roster={roster} terms={terms} />)}
+      {Object.keys(sections).length > 0 && (
+        <div className="row toolbar">
+          <label className="inline"><Icon name="calendar" /> Show sections of
+            <select value={showTerm} onChange={(e) => pickShown(e.target.value)} aria-label="Show sections of semester">
+              {terms.map((t) => <option key={t} value={t}>{t}</option>)}
+              <option value={ALL}>All semesters</option>
+            </select>
+          </label>
+          <label className="inline"><Icon name="users" /> Section
+            <select value={oneSection} onChange={(e) => setSecPick(e.target.value)} aria-label="Show section">
+              <option value="">{"All sections (" + inTerm.length + ")"}</option>
+              {inTerm.map((id) => <option key={id} value={id}>{sections[id].name || id}</option>)}
+            </select>
+          </label>
+          <span className="muted small">Showing {shownIds.length} of {Object.keys(sections).length} section{Object.keys(sections).length === 1 ? "" : "s"}</span>
+        </div>
+      )}
+      {shownIds.map((id) => <SectionEditor key={id} db={db} id={id} section={sections[id]} roster={roster} terms={terms} />)}
     </>
   );
 }

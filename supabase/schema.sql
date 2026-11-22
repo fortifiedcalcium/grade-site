@@ -302,6 +302,7 @@ create table if not exists public.quizzes (
   max_violations int not null default 3 check (max_violations between 1 and 20),
   updated        timestamptz not null default now()
 );
+alter table public.quizzes add column if not exists show_answers boolean not null default false;   -- students may review their answers and the key after submitting
 create index if not exists quizzes_sec_idx on public.quizzes (sec);
 
 create table if not exists public.quiz_attempts (
@@ -344,7 +345,7 @@ create or replace function public.get_quizzes(p_key text) returns jsonb
   select coalesce(jsonb_agg(jsonb_build_object(
     'id', q.id, 'title', q.title, 'count', jsonb_array_length(q.questions),
     'total', (select coalesce(sum(coalesce((x ->> 'points')::numeric, 1)), 0) from jsonb_array_elements(q.questions) x),
-    'timeLimit', q.time_limit, 'lockdown', q.lockdown, 'maxViolations', q.max_violations,
+    'timeLimit', q.time_limit, 'lockdown', q.lockdown, 'maxViolations', q.max_violations, 'showAnswers', q.show_answers,
     'started', (extract(epoch from a.started) * 1000)::bigint,
     'submitted', (extract(epoch from a.submitted) * 1000)::bigint,
     'points', a.points, 'attemptTotal', a.total, 'late', a.late) order by q.updated, q.title), '[]'::jsonb)
@@ -352,6 +353,21 @@ create or replace function public.get_quizzes(p_key text) returns jsonb
   join public.quizzes q on q.sec = r.sec and q.published
   left join public.quiz_attempts a on a.quiz_id = q.id and a.key = r.key
   where r.key = p_key
+$$;
+
+-- A student's own answers next to the right ones, question by question. Only when the instructor turned on "show correct
+-- answers" for the quiz, only after the student submitted in time, and only for the student who holds the key.
+create or replace function public.quiz_review(p_key text, p_quiz text) returns jsonb
+  language sql stable security definer set search_path = public as $$
+  select case when q.show_answers and a.submitted is not null and not a.late then
+    (select coalesce(jsonb_agg(jsonb_build_object(
+        'id', x ->> 'id', 'type', x ->> 'type', 'text', x ->> 'text', 'choices', x -> 'choices',
+        'points', coalesce((x ->> 'points')::numeric, 1), 'answer', x -> 'answer', 'yours', a.answers -> (x ->> 'id'),
+        'right', coalesce(a.answers -> (x ->> 'id') = x -> 'answer', false)) order by ord), '[]'::jsonb)
+       from jsonb_array_elements(q.questions) with ordinality t(x, ord))
+  end
+  from public.quiz_attempts a join public.quizzes q on q.id = a.quiz_id
+  where a.quiz_id = p_quiz and a.key = p_key
 $$;
 
 -- Starts (or resumes) the student's one attempt and returns the questions WITHOUT their answers. The clock starts here.
@@ -392,7 +408,7 @@ $$;
 -- After the time limit (30 seconds of grace for the network) the attempt is recorded as late and scores 0.
 create or replace function public.submit_quiz(p_key text, p_quiz text, p_answers jsonb) returns jsonb
   language plpgsql security definer set search_path = public as $$
-declare q public.quizzes; a public.quiz_attempts; pts numeric := 0; tot numeric := 0; is_late boolean; shown numeric;
+declare q public.quizzes; a public.quiz_attempts; pts numeric := 0; tot numeric := 0; is_late boolean; shown numeric; rev jsonb;
 begin
   select * into a from public.quiz_attempts where quiz_id = p_quiz and key = p_key;
   if a.quiz_id is null then raise exception 'not started' using errcode = 'P0002'; end if;
@@ -409,7 +425,8 @@ begin
     shown := round(pts / tot * q.item_max, 2);
     update public.records set s = jsonb_set(s, array[q.item_key], to_jsonb(shown)), acknowledged = null, updated = now() where key = p_key;
   end if;
-  return jsonb_build_object('points', pts, 'total', tot, 'late', is_late, 'score', shown);
+  rev := public.quiz_review(p_key, p_quiz);
+  return jsonb_build_object('points', pts, 'total', tot, 'late', is_late, 'score', shown, 'review', rev);
 end $$;
 
 -- Lets a student take a quiz again: removes the attempt and the score it wrote.
@@ -435,9 +452,9 @@ begin
   delete from public.quiz_attempts where sec = p_sec;
 end $$;
 
-revoke execute on function public.get_quizzes(text), public.start_quiz(text, text), public.log_quiz_event(text, text, text),
+revoke execute on function public.quiz_review(text, text), public.get_quizzes(text), public.start_quiz(text, text), public.log_quiz_event(text, text, text),
   public.submit_quiz(text, text, jsonb), public.reset_quiz_attempt(text, text), public.clear_quiz_attempts(text) from public, anon, authenticated;
-grant execute on function public.get_quizzes(text), public.start_quiz(text, text), public.log_quiz_event(text, text, text),
+grant execute on function public.quiz_review(text, text), public.get_quizzes(text), public.start_quiz(text, text), public.log_quiz_event(text, text, text),
   public.submit_quiz(text, text, jsonb) to anon, authenticated;
 grant execute on function public.reset_quiz_attempt(text, text), public.clear_quiz_attempts(text) to authenticated;
 

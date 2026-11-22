@@ -239,3 +239,104 @@ describe("each instructor only sees and changes their own sections", () => {
     expect((await pg.query("select public.get_record('keyt1') as r")).rows[0].r).toMatchObject({ id: "T1", s: { q1: 4 } });
   });
 });
+
+describe("quizzes and anti-cheat", () => {
+  const QS = JSON.stringify([
+    { id: "a1", type: "mc", text: "2+2?", choices: ["3", "4", "5"], answer: 1, points: 2 },
+    { id: "a2", type: "tf", text: "Sky is green", answer: false, points: 1 },
+  ]);
+  beforeAll(async () => {
+    await as("authenticated", ADMIN);
+    await pg.query(`insert into public.quizzes (id, sec, title, item_key, item_max, questions, published, time_limit)
+      values ('qz', 'a', 'Quiz 1', 'qz_item', 30, $1::jsonb, true, 10), ('draft', 'a', 'Hidden', null, null, $1::jsonb, false, null)`, [QS]);
+  });
+  it("hides the answers: the list has no questions and start_quiz strips `answer`", async () => {
+    await as("anon");
+    const list = (await pg.query("select public.get_quizzes('key1') as r")).rows[0].r;
+    expect(list.map((q) => q.id)).toEqual(["qz"]);            // drafts are not shown
+    expect(list[0]).not.toHaveProperty("questions");
+    expect(Number(list[0].total)).toBe(3);
+    const run = (await pg.query("select public.start_quiz('key1', 'qz') as r")).rows[0].r;
+    expect(run.questions).toHaveLength(2);
+    expect(JSON.stringify(run)).not.toContain('"answer"');
+    expect(run.remainingMs).toBeGreaterThan(590000);
+    await rejects(pg.query("select public.start_quiz('key1', 'draft')"), /not available/);
+    await rejects(pg.query("select public.start_quiz('wrong', 'qz')"), /not available/);
+    await rejects(pg.query("select * from public.quizzes"), /permission denied/);
+    await rejects(pg.query("select * from public.quiz_attempts"), /permission denied/);
+  });
+  it("logs violations only for an open attempt", async () => {
+    await as("anon");
+    expect((await pg.query("select public.log_quiz_event('key1', 'qz', 'left-page') as n")).rows[0].n).toBe(1);
+    expect((await pg.query("select public.log_quiz_event('key1', 'qz', 'paste') as n")).rows[0].n).toBe(2);
+    expect((await pg.query("select public.log_quiz_event('key2', 'qz', 'paste') as n")).rows[0].n).toBeNull();   // key2 never started
+    expect((await pg.query("select public.start_quiz('key1', 'qz') as r")).rows[0].r.violations).toBe(2);        // resuming keeps the count and the clock
+  });
+  it("scores on the server and writes the scaled score into the grade item", async () => {
+    await as("anon");
+    const r = (await pg.query(`select public.submit_quiz('key1', 'qz', '{"a1":1,"a2":true}'::jsonb) as r`)).rows[0].r;
+    expect(r).toMatchObject({ points: 2, total: 3, late: false });
+    expect(Number(r.score)).toBe(20);                       // 2 of 3 points on a 30-point item
+    await as("authenticated", ADMIN);
+    expect(Number((await pg.query("select s ->> 'qz_item' as v from public.records where key = 'key1'")).rows[0].v)).toBe(20);
+    await as("anon");
+    await rejects(pg.query(`select public.submit_quiz('key1', 'qz', '{}'::jsonb)`), /already submitted/);
+    await rejects(pg.query("select public.start_quiz('key1', 'qz')"), /already submitted/);
+    await rejects(pg.query(`select public.submit_quiz('key2', 'qz', '{}'::jsonb)`), /not started/);
+  });
+  it("scores 0 and flags it late when the time limit has passed", async () => {
+    await as("anon");
+    await pg.query("select public.start_quiz('key2', 'qz')");
+    await pg.exec("reset role");
+    await pg.query("update public.quiz_attempts set started = now() - interval '11 minutes' where key = 'key2'");
+    await as("anon");
+    const r = (await pg.query(`select public.submit_quiz('key2', 'qz', '{"a1":1,"a2":false}'::jsonb) as r`)).rows[0].r;
+    expect(r).toMatchObject({ points: 0, total: 3, late: true });
+  });
+  it("lets only the owning instructor see attempts and allow a retake", async () => {
+    await as("authenticated", TEACHER2);
+    expect((await pg.query("select * from public.quiz_attempts")).rows).toHaveLength(0);
+    expect((await pg.query("select * from public.quizzes")).rows).toHaveLength(0);
+    await rejects(pg.query("select public.reset_quiz_attempt('qz', 'key1')"), /not allowed/);
+    await as("authenticated", ADMIN);
+    const seen = (await pg.query("select key, violations, late from public.quiz_attempts order by key")).rows;
+    expect(seen).toEqual([{ key: "key1", violations: 2, late: false }, { key: "key2", violations: 0, late: true }]);
+    await pg.query("select public.reset_quiz_attempt('qz', 'key1')");
+    expect((await pg.query("select s ? 'qz_item' as has from public.records where key = 'key1'")).rows[0].has).toBe(false);
+    await as("anon");
+    expect((await pg.query("select public.start_quiz('key1', 'qz') as r")).rows[0].r.violations).toBe(0);         // a fresh attempt
+  });
+  it("does not let a student of another section open the quiz", async () => {
+    await as("anon");
+    await rejects(pg.query("select public.start_quiz('keyt1', 'qz')"), /not available/);
+  });
+});
+
+describe("quiz answer review", () => {
+  it("shows right and wrong only when the instructor allows it, only to the student who took it, and never for a late attempt", async () => {
+    await as("anon");
+    // key1 has a fresh, unsubmitted attempt from the retake test; the quiz does not show answers yet
+    const sub = (await pg.query(`select public.submit_quiz('key1', 'qz', '{"a1":0,"a2":false}'::jsonb) as r`)).rows[0].r;
+    expect(sub.review).toBeNull();
+    expect((await pg.query("select public.quiz_review('key1', 'qz') as r")).rows[0].r).toBeNull();
+    expect((await pg.query("select public.get_quizzes('key1') as r")).rows[0].r[0].showAnswers).toBe(false);
+
+    await as("authenticated", ADMIN);
+    await pg.query("update public.quizzes set show_answers = true where id = 'qz'");
+    await as("anon");
+    const rev = (await pg.query("select public.quiz_review('key1', 'qz') as r")).rows[0].r;
+    expect(rev.map((x) => [x.id, x.right, x.yours, x.answer])).toEqual([["a1", false, 0, 1], ["a2", true, false, false]]);
+    expect((await pg.query("select public.get_quizzes('key1') as r")).rows[0].r[0].showAnswers).toBe(true);
+    expect((await pg.query("select public.quiz_review('key2', 'qz') as r")).rows[0].r).toBeNull();     // key2's attempt was late
+    expect((await pg.query("select public.quiz_review('keyt1', 'qz') as r")).rows[0].r).toBeNull();    // never took it
+    expect((await pg.query("select public.quiz_review('wrong', 'qz') as r")).rows[0].r).toBeNull();
+
+    // a student who submits after it is on gets the review straight away
+    await as("authenticated", ADMIN);
+    await pg.query("select public.reset_quiz_attempt('qz', 'key1')");
+    await as("anon");
+    await pg.query("select public.start_quiz('key1', 'qz')");
+    const now = (await pg.query(`select public.submit_quiz('key1', 'qz', '{"a1":1,"a2":true}'::jsonb) as r`)).rows[0].r;
+    expect(now.review.map((x) => x.right)).toEqual([true, false]);
+  });
+});

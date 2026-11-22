@@ -80,3 +80,26 @@ describe("semester choices", () => {
     expect(termChoices([], { today: new Date("2026-03-01") })).toContain("2025-2026 2nd Semester");    // before June: still last school year
   });
 });
+
+import { answerLabel, questionStats, reviewAttempt } from "../src/lib/quiz.js";
+
+describe("quiz summaries", () => {
+  const quiz = { questions: [
+    { id: "a", type: "mc", text: "2+2?", points: 1, choices: ["3", "4", "5"], answer: 1 },
+    { id: "b", type: "tf", text: "Sky is green", points: 1, answer: false },
+  ] };
+  it("reviews one attempt: what was answered, what is right", () => {
+    const r = reviewAttempt(quiz, { a: 2, b: false });
+    expect(r.map((x) => [x.yours, x.correct, x.right])).toEqual([["5", "4", false], ["False", "False", true]]);
+    expect(reviewAttempt(quiz, {})[0]).toMatchObject({ yours: null, right: false });
+    expect(answerLabel(quiz.questions[0], 9)).toBeNull();
+  });
+  it("counts right, wrong and blank per question and how often each choice was picked, ignoring late attempts", () => {
+    const at = (answers, extra = {}) => ({ submitted: 1, late: false, answers, ...extra });
+    const st = questionStats(quiz, [at({ a: 1, b: false }), at({ a: 2, b: true }), at({ a: 1 }), at({ a: 1, b: false }, { late: true }), { submitted: null, answers: { a: 0 } }]);
+    expect(st[0]).toMatchObject({ taken: 3, right: 2, wrong: 1, blank: 0, pct: 67 });
+    expect(st[0].choices).toEqual([{ label: "3", count: 0, correct: false }, { label: "4", count: 2, correct: true }, { label: "5", count: 1, correct: false }]);
+    expect(st[1]).toMatchObject({ taken: 3, right: 1, wrong: 1, blank: 1, pct: 33 });
+    expect(questionStats(quiz, [])[0].pct).toBeNull();
+  });
+});

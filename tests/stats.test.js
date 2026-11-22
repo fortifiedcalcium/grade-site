@@ -87,8 +87,8 @@ describe("report with a view", () => {
   it("with one category shown it lists each score of that category and its statistics", () => {
     const r = build({ hiddenCats: ["quiz", "final"], showFinal: false, filterNote: "Columns: Activities" });
     expect(r.columns.map((c) => c.label)).toEqual(["No.", "Name", "Act 1 (/10)", "Act 2 (/10)", "Posting"]);
-    expect(r.rows[0]).toEqual(["S1", "ANA", "10", "8", "Ready"]);
-    expect(r.rows[1]).toEqual(["S2", "BEN", "6", "", "Ready"]);
+    expect(r.rows[0]).toEqual(["S1", "ANA", "10", "8", ""]);
+    expect(r.rows[1]).toEqual(["S2", "BEN", "6", "", ""]);
     const stat = Object.fromEntries(r.rows.slice(4).map((row) => [row[1], row.slice(2, -1)]));
     expect(stat.Highest).toEqual(["10.00", "9.00"]);
     expect(stat.Lowest).toEqual(["6.00", "8.00"]);
@@ -178,5 +178,15 @@ describe("average scored by", () => {
     expect(r.statsTable.head.at(-1)).toBe("Average scored by");
     expect(r.statsTable.rows[0]).toHaveLength(9);
     expect(r.statsTable.rows.every((row) => row.at(-1) !== "")).toBe(true);
+  });
+});
+
+describe("Ready for posting filter", () => {
+  it("keeps only the students who acknowledged", async () => {
+    const { filterAndSort } = await import("../src/lib/stats.js");
+    const g = { pending: false, remarks: "Passed", total: 90 };
+    const rows = [{ id: "1", name: "A", g, ack: 1 }, { id: "2", name: "B", g, ack: null }];
+    expect(filterAndSort(rows, "ready", "name").map((r) => r.id)).toEqual(["1"]);
+    expect(filterAndSort(rows, "all", "name")).toHaveLength(2);
   });
 });

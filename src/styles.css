@@ -258,3 +258,9 @@ input.cell.over { border-color: var(--danger); border-width: var(--bw); } input.
 .quiz-opt:hover { background: var(--info); color: var(--on-bright); }
 .tag.warn { background: var(--danger); color: var(--on-danger); }
 .qedit { border: var(--bw-s) solid var(--ink); padding: 10px; margin: 10px 0; background: var(--bg); }
+.review-item { border: var(--bw-s) solid var(--ink); padding: 8px 10px; margin: 8px 0; background: var(--surface); }
+.review-item.right { border-left-width: 10px; border-left-color: var(--success); }
+.review-item.wrong { border-left-width: 10px; border-left-color: var(--danger); }
+.review-item p { margin: 4px 0; }
+.pick { display: inline-block; margin: 2px 8px 2px 0; padding: 0 6px; border: var(--bw-s) solid var(--ink); background: var(--surface); }
+.pick.ok { background: var(--success); color: var(--on-bright); }

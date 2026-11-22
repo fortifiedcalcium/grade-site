@@ -31,7 +31,8 @@ const PAGE_WIDTH_CM = 18;
 
 const safeName = (s) => String(s || "section").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "section";
 const show2 = (v) => (isNum(v) ? fmt2(v) : "—");
-const postingText = () => "Ready";
+/* "Ready" only for a student who acknowledged their grade; blank otherwise */
+const postingText = (ack) => (ack ? "Ready" : "");
 const cellText = (v) => (hasValue(v) ? (isNum(v) ? fmtNum(v) : String(v)) : "");
 
 /* sec: the section object; students: [{ id, name, s, ack }] already sorted and filtered the way they are on screen */

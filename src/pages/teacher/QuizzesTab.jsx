@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import Icon from "../../Icon.jsx";
 import { SectionPicker, useSectionPicker } from "../../lib/sectionPicker.jsx";
-import { QUIZ_TEMPLATE_ROWS, blankQuestion, blankQuiz, newQuizId, parseQuizRows, quizProblems, totalPoints } from "../../lib/quiz.js";
+import { QUIZ_TEMPLATE_ROWS, blankQuestion, blankQuiz, newQuizId, parseQuizRows, questionStats, quizProblems, reviewAttempt, totalPoints } from "../../lib/quiz.js";
 import { deleteQuiz, resetQuizAttempt, saveQuiz } from "../../lib/db.js";
 import { studentNo } from "../../lib/keys.js";
 import { csvCell, downloadText, fmtNum } from "../../lib/util.js";
@@ -55,8 +55,50 @@ function QuestionEditor({ q, n, onChange, onRemove, onMove }) {
   );
 }
 
+/* How the class did on each question: how many got it right and how many picked each choice (the right one is marked). */
+function QuestionSummary({ quiz, attempts }) {
+  const stats = questionStats(quiz, attempts);
+  const taken = stats.length ? stats[0].taken : 0;
+  if (!taken) return <p className="muted small">The question summary appears once a student has submitted.</p>;
+  return (
+    <div className="scroll">
+      <table className="grid">
+        <thead><tr><th>#</th><th>Question</th><th className="num">Correct</th><th className="num">Wrong</th><th className="num">No answer</th><th className="num">% correct</th><th>Choices picked</th></tr></thead>
+        <tbody>
+          {stats.map((st, n) => (
+            <tr key={st.q.id}>
+              <td>{n + 1}</td>
+              <td>{st.q.text}</td>
+              <td className="num">{st.right}</td><td className="num">{st.wrong}</td><td className="num">{st.blank}</td>
+              <td className={"num " + (st.pct >= 75 ? "ok" : st.pct < 50 ? "bad" : "")}>{st.pct}%</td>
+              <td className="small">{st.choices.map((c) => <span key={c.label} className={"pick " + (c.correct ? "ok" : "")}>{c.correct ? "✓ " : ""}{c.label}: {c.count}</span>)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* One student's answers next to the right ones. */
+function AttemptDetail({ quiz, attempt }) {
+  const rows = reviewAttempt(quiz, attempt.answers);
+  return (
+    <div>
+      {attempt.late && <p className="muted small">Submitted after the time limit, so it scored 0. These are the answers that were sent.</p>}
+      {rows.map((r, n) => (
+        <div className={"review-item " + (r.right ? "right" : "wrong")} key={r.q.id}>
+          <p><strong>{n + 1}.</strong> {r.q.text} <span className={r.right ? "ok" : "bad"}>{r.right ? "Correct" : r.yours ? "Wrong" : "No answer"}</span></p>
+          <p className="small">Answered: <strong>{r.yours || "none"}</strong>{!r.right && <> · Correct: <strong>{r.correct}</strong></>}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Results({ db, quiz, quizId, students, attempts }) {
   const [msg, setMsg] = useState("");
+  const [open, setOpen] = useState(null);   // key of the student whose answers are shown
   const byKey = Object.fromEntries(attempts.map((a) => [a.key, a]));
   const rows = students.map(([key, r]) => ({ key, r, a: byKey[key] }));
   const reset = async (key, name) => {
@@ -70,19 +112,28 @@ function Results({ db, quiz, quizId, students, attempts }) {
         {attempts.filter((a) => a.submitted).length} submitted, {attempts.filter((a) => !a.submitted).length} in progress, {students.length - attempts.length} not started
         {flagged > 0 && <> · <strong>{flagged}</strong> with anti-cheat warnings</>}.
       </p>
+      <h3 style={{ margin: "12px 0 6px" }}><Icon name="summary" /> Question summary</h3>
+      <QuestionSummary quiz={quiz} attempts={attempts} />
+      <h3 style={{ margin: "16px 0 6px" }}><Icon name="users" /> Students</h3>
       <div className="scroll">
         <table className="grid">
           <thead><tr><th>Student</th><th>Status</th><th className="num">Score</th><th className="num">Warnings</th><th>What was recorded</th><th><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {rows.map(({ key, r, a }) => (
-              <tr key={key}>
+              <React.Fragment key={key}>
+              <tr>
                 <td>{r.name} <span className="muted small">{studentNo(a ? a.id : key)}</span></td>
                 <td>{!a ? "Not started" : a.submitted ? (a.late ? "Late (0)" : "Submitted") : "In progress"}</td>
                 <td className="num">{a && a.submitted ? fmtNum(a.points) + " / " + fmtNum(a.total) : "–"}</td>
                 <td className={"num" + (a && a.violations >= quiz.maxViolations && quiz.lockdown ? " bad" : "")}>{a ? a.violations : "–"}</td>
                 <td className="small">{a && a.events.length ? a.events.map((e) => (EVENT_LABEL[e.type] || e.type) + " " + new Date(e.t).toLocaleTimeString()).join(", ") : ""}{a && a.submitted ? <span className="muted"> · submitted {when(a.submitted)}</span> : null}</td>
-                <td className="right">{a && <button type="button" className="btn small" onClick={() => reset(key, r.name)}><Icon name="refresh" /> Allow retake</button>}</td>
+                <td className="right"><span className="actions">
+                  {a && a.submitted && a.answers && <button type="button" className="btn small" onClick={() => setOpen(open === key ? null : key)}><Icon name="eye" /> {open === key ? "Hide answers" : "Answers"}</button>}
+                  {a && <button type="button" className="btn small" onClick={() => reset(key, r.name)}><Icon name="refresh" /> Allow retake</button>}
+                </span></td>
               </tr>
+              {open === key && a && <tr><td colSpan={6}><AttemptDetail quiz={quiz} attempt={a} /></td></tr>}
+              </React.Fragment>
             ))}
           </tbody>
         </table>
@@ -143,7 +194,7 @@ function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew
       setQuiz(next);
       setMsg(next.published ? "Saved. Students can see this quiz." : "Saved as a draft. Students cannot see it yet.");
       if (isNew) onDone();
-    } catch (e) { setMsg("Not saved: " + e.message); }
+    } catch (e) { setMsg(/show_answers/.test(e.message || "") ? "Not saved: the database needs the latest supabase/schema.sql (run it in the Supabase SQL Editor), or turn off \"Let students review their answers\"." : "Not saved: " + e.message); }
   };
   const remove = async () => {
     if (!window.confirm('Delete the quiz "' + (quiz.title || "untitled") + '"' + (taken ? " and the " + taken + " attempt" + (taken === 1 ? "" : "s") + " recorded for it" : "") + "? Scores already in the grades stay. This cannot be undone.")) return;
@@ -167,6 +218,7 @@ function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew
         <label className="inline"><input type="checkbox" checked={quiz.shuffle} onChange={(e) => set({ shuffle: e.target.checked })} /> Shuffle questions and choices for each student</label>
         <label className="inline"><input type="checkbox" checked={quiz.lockdown} onChange={(e) => set({ lockdown: e.target.checked })} /> Record leaving the page, copying and pasting, and block them</label>
         {quiz.lockdown && <label className="inline">Auto-submit after <input className="short" type="number" min="1" max="20" value={quiz.maxViolations} onChange={(e) => set({ maxViolations: Math.max(1, Number(e.target.value) || 1) })} /> warnings</label>}
+        <label className="inline"><input type="checkbox" checked={!!quiz.showAnswers} onChange={(e) => set({ showAnswers: e.target.checked })} /> Let students review their answers and the correct answers after they submit</label>
         <p className="muted small">The time limit and the scoring are enforced on the server and every student gets one attempt. Warnings are what the browser can notice, so they are evidence for you to judge, not proof: a student can still use a second device.</p>
       </fieldset>
       {quiz.questions.map((q, i) => (

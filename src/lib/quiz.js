@@ -14,7 +14,7 @@ export const blankQuestion = (type = "mc") =>
 
 export const blankQuiz = (sec) => ({
   sec, title: "", itemKey: "", itemMax: null, questions: [blankQuestion()], published: false,
-  timeLimit: null, shuffle: true, lockdown: true, maxViolations: 3,
+  timeLimit: null, shuffle: true, lockdown: true, maxViolations: 3, showAnswers: false,
 });
 
 export const totalPoints = (questions) => (questions || []).reduce((a, q) => a + (Number(q.points) > 0 ? Number(q.points) : 0), 0);
@@ -133,3 +133,41 @@ export function parseQuizRows(rows) {
   return { questions, errors };
 }
 const newId = () => "n" + Math.random().toString(36).slice(2, 9);
+
+/* ---------------------------------------------------------------- summaries
+   answers are { questionId: choice index | true | false }, as sent by the student. */
+export const answerLabel = (q, value) => {
+  if (value === undefined || value === null) return null;
+  if (q.type === "tf") return value === true ? "True" : value === false ? "False" : null;
+  return Number.isInteger(value) && q.choices && q.choices[value] != null ? String(q.choices[value]) : null;
+};
+export const correctLabel = (q) => answerLabel(q, q.answer);
+export const isRight = (q, value) => value !== undefined && value !== null && value === q.answer;
+
+/* One student's attempt, question by question: [{ q, yours (text or null), correct (text), right }]. */
+export function reviewAttempt(quiz, answers) {
+  return (quiz.questions || []).map((q) => {
+    const v = answers ? answers[q.id] : undefined;
+    return { q, yours: answerLabel(q, v), correct: correctLabel(q), right: isRight(q, v) };
+  });
+}
+
+/* How the class did on each question, from the submitted attempts that were not late:
+   [{ q, taken, right, wrong, blank, pct, choices: [{ label, count, correct }] }]. */
+export function questionStats(quiz, attempts) {
+  const done = (attempts || []).filter((a) => a.submitted && !a.late);
+  return (quiz.questions || []).map((q) => {
+    const options = q.type === "tf" ? [true, false] : (q.choices || []).map((_, i) => i);
+    const choices = options.map((o) => ({ label: answerLabel(q, o), count: 0, correct: o === q.answer })).filter((c) => c.label && String(c.label).trim());
+    let right = 0, blank = 0;
+    done.forEach((a) => {
+      const v = a.answers ? a.answers[q.id] : undefined;
+      if (v === undefined || v === null) { blank++; return; }
+      if (isRight(q, v)) right++;
+      const hit = choices.find((c) => c.label === answerLabel(q, v));
+      if (hit) hit.count++;
+    });
+    const taken = done.length;
+    return { q, taken, right, blank, wrong: taken - right - blank, pct: taken ? Math.round((right / taken) * 100) : null, choices };
+  });
+}

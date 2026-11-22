@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Icon from "../Icon.jsx";
-import { fmtClock, presentQuestions } from "../lib/quiz.js";
+import { answerLabel, fmtClock, presentQuestions } from "../lib/quiz.js";
 import { fmtNum } from "../lib/util.js";
 
 const ERR = {
@@ -149,12 +149,35 @@ function QuizRun({ session, quizKey, api, onFinished }) {
   );
 }
 
+/* What the student got right and wrong, with the correct answers. Shown only when the instructor allows it for the quiz. */
+function Review({ review }) {
+  const right = review.filter((r) => r.right).length;
+  return (
+    <section className="card" aria-label="Answer review">
+      <h2><Icon name="check" size={20} /> Answer review</h2>
+      <p className="muted small">{right} of {review.length} question{review.length === 1 ? "" : "s"} correct.</p>
+      {review.map((r, n) => {
+        const yours = answerLabel(r, r.yours);
+        const correct = answerLabel(r, r.answer);
+        return (
+          <div className={"review-item " + (r.right ? "right" : "wrong")} key={r.id}>
+            <p><strong>{n + 1}.</strong> {r.text} <span className={r.right ? "ok" : "bad"}>{r.right ? "Correct" : yours ? "Wrong" : "No answer"}</span></p>
+            <p className="small">Your answer: <strong>{yours || "none"}</strong></p>
+            {!r.right && <p className="small">Correct answer: <strong>{correct}</strong></p>}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
   const [list, setList] = useState(null);
   const [error, setError] = useState("");
   const [session, setSession] = useState(null);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [review, setReview] = useState(null);   // { id, items } of the quiz whose answers are open
 
   const load = useCallback(async () => {
     try { setList(await quizApi.list()); setError(""); } catch (e) { setError(errText(e)); }
@@ -175,10 +198,18 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
 
   const finished = useCallback((r) => {
     setResult({ ...r, title: session && session.title });
+    setReview(r.review ? { id: session && session.id, items: r.review } : null);
     setSession(null);
     load();
     if (onSubmitted) onSubmitted();
   }, [session, load, onSubmitted]);
+
+  const openReview = async (q) => {
+    if (review && review.id === q.id) return setReview(null);
+    setBusy(true);
+    setError("");
+    try { setReview({ id: q.id, items: (await quizApi.review(q.id)) || [] }); } catch (e) { setError(errText(e)); } finally { setBusy(false); }
+  };
 
   if (session) return <QuizRun session={session} quizKey={quizKey} api={quizApi} onFinished={finished} />;
 
@@ -201,7 +232,11 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
           <h2>{q.title}</h2>
           <p className="muted small">{q.count} question{q.count === 1 ? "" : "s"} · {fmtNum(Number(q.total))} points{q.timeLimit ? " · " + q.timeLimit + " min" : ""}</p>
           {q.submitted ? (
-            <p className={q.late ? "bad" : "ok"}>{q.late ? "Submitted late: 0" : "Done: " + fmtNum(Number(q.points)) + " / " + fmtNum(Number(q.attemptTotal))}</p>
+            <>
+              <p className={q.late ? "bad" : "ok"}>{q.late ? "Submitted late: 0" : "Done: " + fmtNum(Number(q.points)) + " / " + fmtNum(Number(q.attemptTotal))}</p>
+              {q.showAnswers && !q.late && <p><button type="button" className="btn small" disabled={busy} onClick={() => openReview(q)}><Icon name="eye" /> {review && review.id === q.id ? "Hide answers" : "Review answers"}</button></p>}
+              {review && review.id === q.id && <Review review={review.items} />}
+            </>
           ) : (
             <button type="button" className="btn primary" disabled={busy} onClick={() => begin(q)}><Icon name="quiz" /> {q.started ? "Resume quiz" : "Start quiz"}</button>
           )}

@@ -87,6 +87,7 @@ export function createStudentApi(db) {
     quizzes: (key) => withTimeout(Promise.resolve(db.rpc("get_quizzes", { p_key: key })).then((r) => unwrap(r) || [])),
     startQuiz: (key, quizId) => withTimeout(Promise.resolve(db.rpc("start_quiz", { p_key: key, p_quiz: quizId })).then(unwrap)),
     submitQuiz: (key, quizId, answers) => withTimeout(Promise.resolve(db.rpc("submit_quiz", { p_key: key, p_quiz: quizId, p_answers: answers })).then(unwrap)),
+    reviewQuiz: (key, quizId) => withTimeout(Promise.resolve(db.rpc("quiz_review", { p_key: key, p_quiz: quizId })).then(unwrap)),
     quizEvent: (key, quizId, type) => Promise.resolve(db.rpc("log_quiz_event", { p_key: key, p_quiz: quizId, p_type: type })).then(unwrap).catch(() => null),
 
     refresh: (key) =>
@@ -121,7 +122,7 @@ SOURCES.quizzes = {
   shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.id, {
     sec: r.sec, title: r.title, itemKey: r.item_key || "", itemMax: r.item_max == null ? null : Number(r.item_max), questions: r.questions || [],
     published: Boolean(r.published), timeLimit: r.time_limit, shuffle: r.shuffle !== false, lockdown: r.lockdown !== false,
-    maxViolations: r.max_violations || 3, updated: ms(r.updated),
+    maxViolations: r.max_violations || 3, showAnswers: Boolean(r.show_answers), hasShowAnswers: "show_answers" in r, updated: ms(r.updated),
   }])),
 };
 SOURCES.attempts = {
@@ -129,7 +130,7 @@ SOURCES.attempts = {
   shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.quiz_id + "|" + r.key, {
     quizId: r.quiz_id, key: r.key, sec: r.sec, id: r.student_id, name: r.name, started: ms(r.started), submitted: ms(r.submitted),
     points: r.points == null ? null : Number(r.points), total: r.total == null ? null : Number(r.total),
-    violations: r.violations || 0, events: r.events || [], late: Boolean(r.late),
+    violations: r.violations || 0, events: r.events || [], late: Boolean(r.late), answers: r.answers || null,
   }])),
 };
 
@@ -274,35 +275,15 @@ export async function addSection(db, sections, name, term, taken) {
   return id;
 }
 
-/* Starts a new semester: copies the subject, instructor and grading scheme of every section of the newest semester
-   into `term`, with no students and no scores, so the new semester starts empty. Nothing in older semesters changes.
-   sections: the instructor's own; taken: ids that belong to other instructors. Returns how many sections were created. */
-export async function startSemester(db, sections, term, taken) {
-  const sem = String(term || "").trim();
-  if (!sem) throw new Error("Enter the new semester, e.g. 2026-2027 2nd Semester.");
-  if (termsOf(sections).includes(sem)) throw new Error(sem + " already exists.");
-  const from = termsOf(sections)[0];
-  const source = Object.entries(sections || {}).filter(([, x]) => termOf(x) === from);
-  if (!source.length) throw new Error("There are no sections to copy yet. Add a section instead.");
-  const used = new Set([...Object.keys(sections || {}), ...(taken || [])]);
-  for (const [, x] of source) {
-    const { count, owner, ...rest } = x; // eslint-disable-line no-unused-vars
-    const base = slugId(sem + " " + x.name) || "section";
-    let id = base, n = 2;
-    while (used.has(id)) id = base + "-" + n++;
-    used.add(id);
-    await saveSection(db, id, { ...rest, term: sem });
-  }
-  return source.length;
-}
-
 /* ---- quizzes (instructor) ---- */
 export async function saveQuiz(db, id, quiz) {
   unwrap(await db.from("quizzes").upsert({
     id, sec: quiz.sec, title: String(quiz.title).trim(), item_key: quiz.itemKey || null, item_max: quiz.itemKey ? quiz.itemMax : null,
     questions: clean(quiz.questions), published: Boolean(quiz.published),
     time_limit: quiz.timeLimit ? Number(quiz.timeLimit) : null, shuffle: quiz.shuffle !== false, lockdown: quiz.lockdown !== false,
-    max_violations: Number(quiz.maxViolations) || 3, updated: new Date().toISOString(),
+    max_violations: Number(quiz.maxViolations) || 3,
+    // sent only when it is on (or the database already has the column), so a database that has not had the latest schema.sql run still saves quizzes
+    ...(quiz.showAnswers || quiz.hasShowAnswers ? { show_answers: Boolean(quiz.showAnswers) } : {}), updated: new Date().toISOString(),
   }));
 }
 export async function deleteQuiz(db, id) { unwrap(await db.from("quizzes").delete().eq("id", id)); }

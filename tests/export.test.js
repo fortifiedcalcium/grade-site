@@ -19,6 +19,7 @@ const sec = {
 const students = (n) => Array.from({ length: n }, (_, i) => ({
   id: "2026-" + (10000 + i), name: i === 0 ? "PEÑA, ÑOR" : "STUDENT " + i,
   s: i === 1 ? { q1: 5 } : { q1: 9, q2: 8, f1: 45 },   // student 1 has no final yet -> pending
+  ack: i === 0 ? 1700000000000 : null,                  // only student 0 acknowledged: the others' Posting cell is empty
 }));
 const meta = { term: "1ST SEMESTER" };
 const now = new Date("2026-10-31T10:00:00");
@@ -34,7 +35,7 @@ describe("report data", () => {
     const r = buildReport({ sec, meta, students: students(3), now });
     expect(r.columns.map((c) => c.label)).toEqual(["No.", "Name", "Quizzes (60%)", "Final Exam (40%)", "Final", "Eq.", "Remarks", "Posting"]);
     expect(r.rows[0]).toEqual(["2026-10000", "PEÑA, ÑOR", "51.00", "36.00", "87.00", "2.00", "Passed", "Ready"]);
-    expect(r.rows[1].slice(-4)).toEqual(["—", "—", "Pending", "Ready"]);
+    expect(r.rows[1].slice(-4)).toEqual(["—", "—", "Pending", ""]);
     expect(r.summary).toBe("Passed: 2   Failed: 0   Pending: 1");
     expect(r.info).toContainEqual(["Date generated", "October 31, 2026"]);
   });

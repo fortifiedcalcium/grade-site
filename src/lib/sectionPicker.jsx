@@ -12,6 +12,7 @@ const TKEY = "term-filter";
 const readT = () => { try { return window.sessionStorage.getItem(TKEY) || ""; } catch { return ""; } };
 const writeT = (v) => { try { window.sessionStorage.setItem(TKEY, v); } catch { /* storage blocked */ } };
 export const rememberTerm = writeT;
+export const recalledTerm = readT;
 const read = () => { try { return window.sessionStorage.getItem(KEY) || ""; } catch { return ""; } };
 const write = (v) => { try { window.sessionStorage.setItem(KEY, v); } catch { /* storage blocked */ } };
 
