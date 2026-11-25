@@ -43,6 +43,31 @@ describe("student quiz anti-cheat", () => {
     await begin();
     expect(document.querySelector("details.quiz-rules").open).toBe(false);   // still there during the quiz, folded away
   });
+  it("lets the floating panel be hidden and brought back, keeping the essentials on the small button", async () => {
+    setup({ start: vi.fn(async () => ({ ...SESSION, remainingMs: 600000, maxViolations: 3 })) });
+    await begin();
+    const run = () => document.querySelector(".quiz-run");
+    fireEvent.click(screen.getByRole("button", { name: /^\s*hide/i }));
+    expect(run().classList.contains("bar-closed")).toBe(true);
+    const pill = document.querySelector(".quiz-pill");
+    expect(pill.textContent).toMatch(/Time left (10:00|9:59)/);
+    expect(pill.textContent).toMatch(/Warnings 0\/3/);
+    expect(pill.textContent).toMatch(/Answered 0\/1/);
+    fireEvent.click(screen.getByLabelText("4"));   // answering works with the panel hidden, and the count follows
+    expect(document.querySelector(".quiz-pill").textContent).toMatch(/Answered 1\/1/);
+    fireEvent.click(document.querySelector(".quiz-pill"));
+    expect(run().classList.contains("bar-closed")).toBe(false);
+    expect(document.querySelector(".quiz-pill")).toBeNull();
+  });
+  it("reopens a hidden panel when there is a new warning, so it is not missed", async () => {
+    const api = setup({ start: vi.fn(async () => ({ ...SESSION, maxViolations: 3 })) });
+    await begin();
+    fireEvent.click(screen.getByRole("button", { name: /^\s*hide/i }));
+    act(() => { window.dispatchEvent(new Event("blur")); });
+    expect(api.event).toHaveBeenCalledWith("qz", "left-page");
+    expect(document.querySelector(".quiz-run").classList.contains("bar-closed")).toBe(false);
+    expect(screen.getByRole("alert").textContent).toMatch(/you left the quiz page/i);
+  });
   it("shows no rules for a quiz with lockdown off, since nothing is recorded", async () => {
     setup({ list: vi.fn(async () => [{ ...LIST[0], lockdown: false }]) });
     await screen.findByRole("button", { name: /start quiz/i });

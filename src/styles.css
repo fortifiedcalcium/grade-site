@@ -304,3 +304,18 @@ input.cell.over { border-color: var(--danger); border-width: var(--bw); } input.
 .stat-icon.t-review { background: var(--g-midterm); }
 .reason { display: inline-flex; align-items: center; gap: 5px; margin-right: 14px; }
 .grid thead th .icon { margin-right: 2px; }
+
+/* On phones the floating quiz panel can be hidden so it stops covering the questions; a small button with the time brings it
+   back. "Phone" includes a phone on its side (short screen). Wider screens always show the panel. */
+.quiz-hide, .quiz-pill { display: none; }
+@media (max-width: 640px), (max-height: 500px) and (pointer: coarse) {
+  .quiz-hide { display: inline-block; float: right; margin: 0 0 6px 8px; }
+  .quiz-run.bar-closed .quiz-bar { display: none; }
+  .quiz-run.bar-closed { padding-bottom: 76px; }   /* room to scroll the Submit button clear of the floating button */
+  .quiz-pill { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 4px 12px; position: fixed; z-index: 40;
+    right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 20px); min-height: 48px; padding: 8px 12px;
+    font: inherit; font-weight: 800; font-variant-numeric: tabular-nums; background: var(--primary); color: var(--on-bright);
+    border: var(--bw) solid var(--ink); box-shadow: var(--shadow-m); cursor: pointer; }
+  .quiz-pill.warn { background: var(--danger); color: var(--on-danger); }
+  .quiz-pill-show { text-decoration: underline; text-underline-offset: 3px; }
+}

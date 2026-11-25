@@ -49,6 +49,8 @@ const toSections = (rows) => Object.fromEntries((rows || []).map((r) => [r.id, t
 
 /* ---------------------------- student side ---------------------------- */
 
+export const KEYS_PER_REQUEST = 50;   // the same limit as get_records in supabase/schema.sql
+
 export function createStudentApi(db) {
   const fetchPublic = async () => {
     const [m, s] = await Promise.all([
@@ -64,6 +66,16 @@ export function createStudentApi(db) {
     return record;
   };
 
+  /* get_records looks at no more than 50 keys per request (it ignores the rest), and sign-in has one key per section plus one,
+     so they go in groups of 50. If any group fails, the sign-in fails: a partial answer could hide one of the student's classes. */
+  const fetchRecords = async (keys) => {
+    const groups = [];
+    for (let i = 0; i < keys.length; i += KEYS_PER_REQUEST) groups.push(keys.slice(i, i + KEYS_PER_REQUEST));
+    const answers = await Promise.all(groups.map(async (group) => unwrap(await db.rpc("get_records", { p_keys: group })) || []));
+    // the order one request would have given (name, then section), so the class shown first does not depend on the grouping
+    return answers.flat().sort((a, b) => String(a.name).localeCompare(String(b.name)) || String(a.sec).localeCompare(String(b.sec)));
+  };
+
   return {
     loadMeta: () => withTimeout(fetchPublic().then((x) => x.meta)),
 
@@ -77,7 +89,7 @@ export function createStudentApi(db) {
           const no = normId(idInput);
           const ids = [no, ...Object.keys(sections).map((secId) => taggedRowId(no, secId))];
           const keys = await Promise.all(ids.map((id) => recordKey(meta.salt, id, pinInput)));
-          const found = unwrap(await db.rpc("get_records", { p_keys: keys })) || [];
+          const found = await fetchRecords(keys);
           if (!found.length) throw Object.assign(new Error("no match"), { code: "nomatch" });
           const entries = found.map((rec) => ({ key: rec.key, record: rec, section: sections[rec.sec] || null }));
           return { ...entries[0], meta, others: entries };

@@ -60,6 +60,7 @@ function QuizRun({ session, quizKey, api, onFinished }) {
   const [violations, setViolations] = useState(session.violations || 0);
   const [left, setLeft] = useState(session.remainingMs);
   const [notice, setNotice] = useState("");
+  const [barOpen, setBarOpen] = useState(true);   // phones only: the floating panel can be hidden (see styles.css)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const deadline = useRef(session.remainingMs == null ? null : Date.now() + session.remainingMs);
@@ -161,6 +162,7 @@ function QuizRun({ session, quizKey, api, onFinished }) {
     lastEvent.current = now;
     setViolations((v) => v + 1);
     setNotice(message);
+    setBarOpen(true);   // a new warning must be seen, even if the panel was hidden
     api.event(id, type);
   }, [api, id, lockdown]);
 
@@ -205,6 +207,10 @@ function QuizRun({ session, quizKey, api, onFinished }) {
     return () => window.removeEventListener("beforeunload", warn);
   }, []);
 
+  // answers saved nowhere at all is too important to stay hidden
+  const unsafe = saveState === "device" && !deviceOk.current;
+  useEffect(() => { if (unsafe) setBarOpen(true); }, [unsafe]);
+
   const unanswered = questions.filter((q) => answers[q.id] === undefined).length;
   const clickSubmit = () => {
     if (unanswered && !window.confirm(unanswered + " question" + (unanswered === 1 ? " is" : "s are") + " unanswered. Submit anyway? You cannot change your answers afterwards.")) return;
@@ -212,8 +218,9 @@ function QuizRun({ session, quizKey, api, onFinished }) {
   };
 
   return (
-    <div className={lockdown ? "quiz-lock" : ""}>
-      <section className="card quiz-bar" role="status">
+    <div className={"quiz-run" + (lockdown ? " quiz-lock" : "") + (barOpen ? "" : " bar-closed")}>
+      <section className="card quiz-bar" id="quiz-bar" role="status">
+        <button type="button" className="btn small quiz-hide" onClick={() => setBarOpen(false)} aria-controls="quiz-bar" aria-expanded="true"><Icon name="close" /> Hide</button>
         <h2><Icon name="quiz" size={20} /> {title}</h2>
         <div className="row">
           {left != null && <strong className={"tag" + (left < 60000 ? " warn" : "")} aria-label="Time left">{fmtClock(left)}</strong>}
@@ -230,6 +237,15 @@ function QuizRun({ session, quizKey, api, onFinished }) {
         {lockdown && <p className="muted small">Stay on this page. Leaving it, copying or pasting is recorded and shown to your instructor; after {maxViolations} warnings the quiz is submitted automatically.</p>}
         {notice && <p className="banner" role="alert"><Icon name="alert" /> {notice}</p>}
       </section>
+      {!barOpen && (
+        <button type="button" className={"quiz-pill" + (left != null && left < 60000 ? " warn" : "")} onClick={() => setBarOpen(true)} aria-controls="quiz-bar" aria-expanded="false">
+          {left != null && <span><Icon name="clock" /> <span className="sr-only">Time left </span>{fmtClock(left)}</span>}
+          {lockdown && <span><Icon name="flag" /> <span className="sr-only">Warnings </span>{violations}/{maxViolations}</span>}
+          <span><Icon name="check" /> <span className="sr-only">Answered </span>{questions.length - unanswered}/{questions.length}</span>
+          {saveState === "device" && <span><Icon name="alert" /> Not saved online</span>}
+          <span className="quiz-pill-show">Show</span>
+        </button>
+      )}
       {lockdown && <section className="card"><QuizRules maxViolations={maxViolations} /></section>}
 
       {questions.map((q, n) => (
