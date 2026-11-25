@@ -10,6 +10,34 @@ const ERR = {
 };
 const errText = (e) => ERR[e && e.code] || ERR[e && e.message] || "Something went wrong. Please try again.";
 
+/* The anti-cheat rules in plain words. Keep these in step with what QuizRun really records (report() below): a rule listed
+   here that the page cannot notice, or the other way round, would mislead students. */
+function QuizRules({ maxViolations, open }) {
+  return (
+    <details className="quiz-rules" open={open}>
+      <summary><Icon name="lock" /> What counts as cheating (read before you start)</summary>
+      <p className="small">Each of these is <strong>1 warning</strong>:</p>
+      <ul className="small">
+        <li>Switching to another browser tab or window.</li>
+        <li>Opening another app, such as Messenger, Google, notes, the camera or an AI chatbot.</li>
+        <li>Minimizing the browser, going to your phone's home screen, or switching between apps.</li>
+        <li>Clicking outside the quiz page, such as the address bar, a second monitor, or the other side of a split screen.</li>
+        <li>Locking your phone, or letting the screen turn off.</li>
+        <li>Answering a call, or tapping a notification that takes you out of the quiz.</li>
+        <li>Copying, cutting or pasting text, for example from your phone's press-and-hold menu.</li>
+        <li>Pressing the Print Screen key.</li>
+      </ul>
+      <p className="small">Blocked, but not counted: selecting text, right-clicking, and keyboard shortcuts such as Ctrl or Cmd + C, V, X, A, P, S or U.</p>
+      <p className="small">
+        After <strong>{maxViolations} warning{maxViolations === 1 ? "" : "s"}</strong> your quiz is submitted automatically with the answers you have so far.
+        Things that happen within 1.5 seconds of each other count once. Your instructor sees each warning and the time it happened.
+        Closing or reloading the page does not stop the timer or clear your warnings.
+      </p>
+      <p className="small"><strong>Before you start:</strong> turn on Do Not Disturb, close other apps and tabs, charge your device, and keep your screen from turning off by itself.</p>
+    </details>
+  );
+}
+
 /* One attempt in progress. Anti-cheat: the server owns the clock and the scoring; this page only shuffles, watches and reports.
    Leaving the tab or window, copying, pasting and the right-click menu are logged (and counted against the quiz's limit when
    it has lockdown on). Reaching the limit, or running out of time, submits what is answered so far. */
@@ -124,6 +152,7 @@ function QuizRun({ session, quizKey, api, onFinished }) {
         {lockdown && <p className="muted small">Stay on this page. Leaving it, copying or pasting is recorded and shown to your instructor; after {maxViolations} warnings the quiz is submitted automatically.</p>}
         {notice && <p className="banner" role="alert"><Icon name="alert" /> {notice}</p>}
       </section>
+      {lockdown && <section className="card"><QuizRules maxViolations={maxViolations} /></section>}
 
       {questions.map((q, n) => (
         <section className="card" key={q.id}>
@@ -187,7 +216,7 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
   const begin = async (q) => {
     const rules = [
       q.timeLimit ? "You have " + q.timeLimit + " minute" + (q.timeLimit === 1 ? "" : "s") + ". The clock starts now and keeps running even if you close the page." : "",
-      q.lockdown ? "Leaving this page, copying or pasting is recorded. After " + q.maxViolations + " warnings the quiz is submitted automatically." : "",
+      q.lockdown ? "Leaving this page (another tab or app, home screen, screen lock), copying or pasting is recorded. After " + q.maxViolations + " warnings the quiz is submitted automatically. See \"What counts as cheating\" for the full list." : "",
       "You can submit only once.",
     ].filter(Boolean).join("\n\n");
     if (!window.confirm('Start "' + q.title + '"?\n\n' + rules)) return;
@@ -238,7 +267,10 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
               {review && review.id === q.id && <Review review={review.items} />}
             </>
           ) : (
+            <>
+            {q.lockdown && <QuizRules maxViolations={q.maxViolations} open />}
             <button type="button" className="btn primary" disabled={busy} onClick={() => begin(q)}><Icon name="quiz" /> {q.started ? "Resume quiz" : "Start quiz"}</button>
+            </>
           )}
         </section>
       ))}

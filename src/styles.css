@@ -266,3 +266,8 @@ input.cell.over { border-color: var(--danger); border-width: var(--bw); } input.
 .pick.ok { background: var(--success); color: var(--on-bright); }
 .subject-head { margin: 18px 0 8px; padding: 6px 10px; background: var(--info); color: var(--on-bright); border: var(--bw-s) solid var(--ink); box-shadow: var(--shadow-s); font-size: 1rem; text-transform: uppercase; }
 .subject-head .muted { color: var(--on-bright); text-transform: none; }
+.quiz-rules { margin: 0 0 12px; }
+.quiz-rules summary { cursor: pointer; font-weight: 800; }
+.quiz-rules ul { margin: 6px 0; padding-left: 22px; }
+.quiz-rules li { margin: 3px 0; }
+.card > .quiz-rules:only-child { margin: 0; }

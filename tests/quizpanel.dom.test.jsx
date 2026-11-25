@@ -21,6 +21,24 @@ const begin = async () => {
 };
 
 describe("student quiz anti-cheat", () => {
+  it("lists what counts as cheating before the quiz starts, with the quiz's own warning limit", async () => {
+    setup();
+    await screen.findByRole("button", { name: /start quiz/i });
+    const rules = document.querySelector("details.quiz-rules");
+    expect(rules.open).toBe(true);
+    expect(rules.textContent).toMatch(/what counts as cheating/i);
+    expect(rules.textContent).toMatch(/switching to another browser tab/i);
+    expect(rules.textContent).toMatch(/locking your phone/i);
+    expect(rules.textContent).toMatch(/blocked, but not counted/i);
+    expect(rules.textContent).toMatch(/after 2 warnings/i);
+    await begin();
+    expect(document.querySelector("details.quiz-rules").open).toBe(false);   // still there during the quiz, folded away
+  });
+  it("shows no rules for a quiz with lockdown off, since nothing is recorded", async () => {
+    setup({ list: vi.fn(async () => [{ ...LIST[0], lockdown: false }]) });
+    await screen.findByRole("button", { name: /start quiz/i });
+    expect(document.querySelector("details.quiz-rules")).toBeNull();
+  });
   it("submits the ORIGINAL choice index and shows the result", async () => {
     const api = setup();
     await begin();
