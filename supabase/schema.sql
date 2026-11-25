@@ -558,8 +558,10 @@ begin
   select * into a from public.quiz_attempts where quiz_id = q.id and key = r.key;
   if a.quiz_id is not null and a.submitted is not null then raise exception 'already submitted' using errcode = 'P0001'; end if;
   if a.quiz_id is null then
-    insert into public.quiz_attempts (quiz_id, key) values (q.id, r.key)
-      returning * into a;
+    -- two starts at the same moment: one creates the attempt, the other just reads it
+    insert into public.quiz_attempts (quiz_id, key) values (q.id, r.key) on conflict (quiz_id, key) do nothing;
+    select * into a from public.quiz_attempts where quiz_id = q.id and key = r.key;
+    if a.submitted is not null then raise exception 'already submitted' using errcode = 'P0001'; end if;
   end if;
   left_ms := case when q.time_limit is null then null
                   else greatest(0, (extract(epoch from (a.started + make_interval(mins => q.time_limit) - now())) * 1000)::bigint) end;
@@ -587,7 +589,8 @@ create or replace function public.submit_quiz(p_key text, p_quiz text, p_answers
   language plpgsql security definer set search_path = public as $$
 declare q public.quizzes; a public.quiz_attempts; pts numeric := 0; tot numeric := 0; is_late boolean; shown numeric; rev jsonb;
 begin
-  select * into a from public.quiz_attempts where quiz_id = p_quiz and key = p_key;
+  -- `for update` locks the attempt: a second submit arriving at the same moment waits, then sees it is already submitted
+  select * into a from public.quiz_attempts where quiz_id = p_quiz and key = p_key for update;
   if a.quiz_id is null then raise exception 'not started' using errcode = 'P0002'; end if;
   if a.submitted is not null then raise exception 'already submitted' using errcode = 'P0001'; end if;
   select * into q from public.quizzes where id = p_quiz;
