@@ -15,9 +15,18 @@ const setup = (over = {}) => {
   render(<QuizPanel quizApi={quizApi} quizKey="k1" onSubmitted={() => {}} />);
   return quizApi;
 };
+/* The page attaches its anti-cheat listeners in an effect, which runs a moment AFTER the question appears. On a busy machine a
+   test that acts the instant the question is visible can get in first, so wait until the listeners are there. A right-click is
+   used to check: the page blocks it but never counts it as a warning. */
+const listening = () => waitFor(() => {
+  const probe = new Event("contextmenu", { cancelable: true, bubbles: true });
+  document.dispatchEvent(probe);
+  expect(probe.defaultPrevented).toBe(true);
+});
 const begin = async () => {
   fireEvent.click(await screen.findByRole("button", { name: /start quiz/i }));
   await screen.findByText("2+2?");
+  await listening();
 };
 
 describe("student quiz anti-cheat", () => {

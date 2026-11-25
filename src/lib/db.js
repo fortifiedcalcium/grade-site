@@ -99,6 +99,8 @@ export function createStudentApi(db) {
     quizzes: (key) => withTimeout(Promise.resolve(db.rpc("get_quizzes", { p_key: key })).then((r) => unwrap(r) || [])),
     startQuiz: (key, quizId) => withTimeout(Promise.resolve(db.rpc("start_quiz", { p_key: key, p_quiz: quizId })).then(unwrap)),
     submitQuiz: (key, quizId, answers) => withTimeout(Promise.resolve(db.rpc("submit_quiz", { p_key: key, p_quiz: quizId, p_answers: answers })).then(unwrap)),
+    /* Saves the answers of an open attempt. Resolves to the newest revision stored, or null when the attempt is closed. */
+    saveQuizDraft: (key, quizId, answers, rev) => withTimeout(Promise.resolve(db.rpc("save_quiz_answers", { p_key: key, p_quiz: quizId, p_answers: answers, p_rev: rev })).then(unwrap), 10000),
     reviewQuiz: (key, quizId) => withTimeout(Promise.resolve(db.rpc("quiz_review", { p_key: key, p_quiz: quizId })).then(unwrap)),
     quizEvent: (key, quizId, type) => Promise.resolve(db.rpc("log_quiz_event", { p_key: key, p_quiz: quizId, p_type: type })).then(unwrap).catch(() => null),
 

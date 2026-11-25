@@ -281,6 +281,20 @@ begin
 end
 $links$;
 
+-- Answers saved while a quiz is still open, so a reload, a closed browser or a change of device does not lose them. Nobody can
+-- read or write this table directly (it is not part of the instructor's live updates either): only the functions below do.
+create table if not exists public.quiz_drafts (
+  quiz_id text not null,
+  key     text not null,
+  answers jsonb not null check (jsonb_typeof(answers) = 'object' and char_length(answers::text) < 20000),
+  rev     bigint not null,                               -- counts up with every change, so a late, older save cannot replace a newer one
+  updated timestamptz not null default now(),
+  primary key (quiz_id, key),
+  foreign key (quiz_id, key) references public.quiz_attempts (quiz_id, key) on delete cascade on update cascade
+);
+alter table public.quiz_drafts enable row level security;
+revoke all on public.quiz_drafts from anon, authenticated;
+
 -- ---------------------------------------------------------------- row level security
 alter table public.meta          enable row level security;
 alter table public.subjects      enable row level security;
@@ -550,7 +564,7 @@ $$;
 -- Starts (or resumes) the student's one attempt and returns the questions WITHOUT their answers. The clock starts here.
 create or replace function public.start_quiz(p_key text, p_quiz text) returns jsonb
   language plpgsql security definer set search_path = public as $$
-declare r public.enrollments; q public.quizzes; a public.quiz_attempts; left_ms bigint;
+declare r public.enrollments; q public.quizzes; a public.quiz_attempts; d public.quiz_drafts; left_ms bigint;
 begin
   select * into r from public.enrollments where key = p_key;
   select * into q from public.quizzes where id = p_quiz and published and sec = r.sec;
@@ -563,10 +577,12 @@ begin
     select * into a from public.quiz_attempts where quiz_id = q.id and key = r.key;
     if a.submitted is not null then raise exception 'already submitted' using errcode = 'P0001'; end if;
   end if;
+  select * into d from public.quiz_drafts where quiz_id = q.id and key = r.key;
   left_ms := case when q.time_limit is null then null
                   else greatest(0, (extract(epoch from (a.started + make_interval(mins => q.time_limit) - now())) * 1000)::bigint) end;
   return jsonb_build_object(
     'id', q.id, 'title', q.title, 'remainingMs', left_ms, 'violations', a.violations,
+    'started', (extract(epoch from a.started) * 1000)::bigint, 'draft', d.answers, 'draftRev', coalesce(d.rev, 0),
     'timeLimit', q.time_limit, 'lockdown', q.lockdown, 'maxViolations', q.max_violations, 'shuffle', q.shuffle,
     'questions', (select coalesce(jsonb_agg(x - 'answer' order by ord), '[]'::jsonb) from jsonb_array_elements(q.questions) with ordinality t(x, ord)));
 end $$;
@@ -582,6 +598,25 @@ create or replace function public.log_quiz_event(p_key text, p_quiz text, p_type
    where key = p_key and quiz_id = p_quiz and submitted is null
   returning violations
 $$;
+
+-- Saves the answers of an attempt that is still open and within its time. Returns the newest revision stored (higher than p_rev
+-- when another device is ahead), or null when there is nothing open to save to. It never changes the score or the clock.
+create or replace function public.save_quiz_answers(p_key text, p_quiz text, p_answers jsonb, p_rev bigint) returns bigint
+  language plpgsql security definer set search_path = public as $$
+declare a public.quiz_attempts; v_limit int; v_rev bigint;
+begin
+  -- `for share`: a save arriving while the same attempt is being submitted waits, then sees it is closed
+  select * into a from public.quiz_attempts where quiz_id = p_quiz and key = p_key for share;
+  if a.quiz_id is null or a.submitted is not null then return null; end if;
+  select time_limit into v_limit from public.quizzes where id = p_quiz;
+  if v_limit is not null and now() > a.started + make_interval(mins => v_limit) + interval '30 seconds' then return null; end if;
+  if jsonb_typeof(p_answers) is distinct from 'object' or p_rev is null then return null; end if;
+  insert into public.quiz_drafts as d (quiz_id, key, answers, rev) values (p_quiz, p_key, p_answers, p_rev)
+  on conflict (quiz_id, key) do update set answers = excluded.answers, rev = excluded.rev, updated = now()
+    where d.rev < excluded.rev;
+  select rev into v_rev from public.quiz_drafts where quiz_id = p_quiz and key = p_key;
+  return v_rev;
+end $$;
 
 -- Scores the answers on the server ({ questionId: choice index | true | false }) and puts the result in the grade item.
 -- After the time limit (30 seconds of grace for the network) the attempt is recorded as late and scores 0.
@@ -601,6 +636,7 @@ begin
     into tot, pts from jsonb_array_elements(q.questions) x;
   update public.quiz_attempts set submitted = now(), points = pts, total = tot, late = is_late, answers = p_answers
    where quiz_id = p_quiz and key = p_key;
+  delete from public.quiz_drafts where quiz_id = p_quiz and key = p_key;
   if q.item_key is not null and q.item_max is not null and tot > 0 then
     shown := round(pts / tot * q.item_max, 2);
     update public.enrollments set scores = jsonb_set(scores, array[q.item_key], to_jsonb(shown)), acknowledged = null, updated = now() where key = p_key;
@@ -632,9 +668,9 @@ begin
   delete from public.quiz_attempts where quiz_id in (select id from public.quizzes where sec = p_sec);
 end $$;
 
-revoke execute on function public.quiz_review(text, text), public.get_quizzes(text), public.start_quiz(text, text), public.log_quiz_event(text, text, text),
+revoke execute on function public.save_quiz_answers(text, text, jsonb, bigint), public.quiz_review(text, text), public.get_quizzes(text), public.start_quiz(text, text), public.log_quiz_event(text, text, text),
   public.submit_quiz(text, text, jsonb), public.reset_quiz_attempt(text, text), public.clear_quiz_attempts(text) from public, anon, authenticated;
-grant execute on function public.quiz_review(text, text), public.get_quizzes(text), public.start_quiz(text, text), public.log_quiz_event(text, text, text),
+grant execute on function public.save_quiz_answers(text, text, jsonb, bigint), public.quiz_review(text, text), public.get_quizzes(text), public.start_quiz(text, text), public.log_quiz_event(text, text, text),
   public.submit_quiz(text, text, jsonb) to anon, authenticated;
 grant execute on function public.reset_quiz_attempt(text, text), public.clear_quiz_attempts(text) to authenticated;
 

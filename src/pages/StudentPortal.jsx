@@ -226,6 +226,7 @@ export default function StudentPortal() {
     list: () => api.quizzes(data.key),
     start: (qid) => api.startQuiz(data.key, qid),
     submit: (qid, answers) => api.submitQuiz(data.key, qid, answers),
+    save: (qid, answers, rev) => api.saveQuizDraft(data.key, qid, answers, rev),
     review: (qid) => api.reviewQuiz(data.key, qid),
     event: (qid, type) => api.quizEvent(data.key, qid, type),
   }), [api, data && data.key]); // eslint-disable-line react-hooks/exhaustive-deps

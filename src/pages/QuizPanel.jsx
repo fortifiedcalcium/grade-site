@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Icon from "../Icon.jsx";
 import { answerLabel, fmtClock, presentQuestions } from "../lib/quiz.js";
 import { fmtNum } from "../lib/util.js";
+import { draftName, readDraft, removeDraft, restoreDraft, writeDraft } from "../lib/quizDraft.js";
 
 const ERR = {
   timeout: "The connection timed out. Check your internet and try again.",
@@ -31,7 +32,8 @@ function QuizRules({ maxViolations, open }) {
       <p className="small">
         After <strong>{maxViolations} warning{maxViolations === 1 ? "" : "s"}</strong> your quiz is submitted automatically with the answers you have so far.
         Things that happen within 1.5 seconds of each other count once. Your instructor sees each warning and the time it happened.
-        Closing or reloading the page does not stop the timer or clear your warnings.
+        Closing or reloading the page does not stop the timer or clear your warnings. Your answers are saved as you go: if the
+        page closes, sign in again and press Resume quiz.
       </p>
       <p className="small"><strong>Before you start:</strong> turn on Do Not Disturb, close other apps and tabs, charge your device, and keep your screen from turning off by itself.</p>
     </details>
@@ -44,7 +46,16 @@ function QuizRules({ maxViolations, open }) {
 function QuizRun({ session, quizKey, api, onFinished }) {
   const { id, title, lockdown, maxViolations, shuffle } = session;
   const questions = useMemo(() => presentQuestions(session.questions, { shuffle, seed: quizKey + "|" + id }), [session, shuffle, quizKey, id]);
-  const [answers, setAnswers] = useState({});
+  // answers saved earlier (reload, closed browser, other device) come back: the newer of the device copy and the database copy
+  const draft = draftName(quizKey, id, session.started);
+  const [restored] = useState(() => restoreDraft(session, readDraft(draft)));
+  const [answers, setAnswers] = useState(restored.answers);
+  const [saveState, setSaveState] = useState(restored.rev > restored.serverRev ? "saving" : restored.rev ? "saved" : "");
+  const deviceOk = useRef(true);
+  const rev = useRef(restored.rev);               // goes up with every change
+  const savedRev = useRef(restored.serverRev);    // the newest revision the database has
+  const saveTimer = useRef(null);
+  const saving = useRef(false);
   const [violations, setViolations] = useState(session.violations || 0);
   const [left, setLeft] = useState(session.remainingMs);
   const [notice, setNotice] = useState("");
@@ -56,19 +67,78 @@ function QuizRun({ session, quizKey, api, onFinished }) {
   const answersRef = useRef(answers);
   answersRef.current = answers;
 
+  // send the newest answers to the database: one request at a time, retried while the connection is down
+  const sync = useCallback(async () => {
+    clearTimeout(saveTimer.current);
+    if (sent.current || saving.current || rev.current <= savedRev.current) return;
+    if (!api.save) return setSaveState("device");
+    saving.current = true;
+    const sending = rev.current;
+    let wait = null;
+    try {
+      const stored = await api.save(id, answersRef.current, sending);
+      if (stored == null) setSaveState("device");               // the attempt is closed or its time is up
+      else {
+        if (stored > sending) rev.current = Math.max(rev.current, stored + 1);   // another device saved: this one is in use now
+        else savedRev.current = sending;
+        if (rev.current <= savedRev.current) setSaveState("saved");
+        else wait = 800;
+      }
+    } catch {
+      setSaveState("device");
+      wait = 5000;
+    }
+    saving.current = false;
+    if (wait != null && !sent.current) saveTimer.current = setTimeout(sync, wait);
+  }, [api, id]);
+
+  const saveSoon = useCallback((ms) => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(sync, ms);
+  }, [sync]);
+
+  const choose = (questionId, value) => {
+    const next = { ...answersRef.current, [questionId]: value };
+    answersRef.current = next;
+    setAnswers(next);
+    rev.current += 1;
+    deviceOk.current = writeDraft(draft, next, rev.current);   // first on the device, at once
+    setSaveState("saving");
+    saveSoon(800);
+  };
+
+  useEffect(() => {
+    if (rev.current > savedRev.current) saveSoon(0);   // the device copy was ahead
+    const now = () => { sync(); };
+    const hidden = () => { if (document.visibilityState === "hidden") sync(); };   // leaving: do not wait
+    window.addEventListener("online", now);
+    window.addEventListener("pagehide", now);
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      clearTimeout(saveTimer.current);
+      window.removeEventListener("online", now);
+      window.removeEventListener("pagehide", now);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, [sync, saveSoon]);
+
   const submit = useCallback(async () => {
     if (sent.current) return;
     sent.current = true;
     setBusy(true);
     setError("");
+    clearTimeout(saveTimer.current);
     try {
-      onFinished(await api.submit(id, answersRef.current));
+      const result = await api.submit(id, answersRef.current);
+      removeDraft(draft);
+      onFinished(result);
     } catch (e) {
       sent.current = false;
       setError(errText(e));
       setBusy(false);
+      saveSoon(2000);
     }
-  }, [api, id, onFinished]);
+  }, [api, id, onFinished, draft, saveSoon]);
 
   // the countdown comes from the server's remaining time, so a wrong clock on the student's device changes nothing
   useEffect(() => {
@@ -148,7 +218,14 @@ function QuizRun({ session, quizKey, api, onFinished }) {
           {left != null && <strong className={"tag" + (left < 60000 ? " warn" : "")} aria-label="Time left">{fmtClock(left)}</strong>}
           {lockdown && <span className="small">Warnings: <strong>{violations}</strong> / {maxViolations}</span>}
           <span className="small">{questions.length - unanswered} / {questions.length} answered</span>
+          {saveState && (
+            <span className="small" aria-label="Autosave status">
+              {saveState === "saved" ? "✓ Answers saved" : saveState === "saving" ? "Saving…"
+                : deviceOk.current ? "Saved on this device only, not online yet" : "Answers are not being saved: do not close or reload this page"}
+            </span>
+          )}
         </div>
+        {Object.keys(restored.answers).length > 0 && <p className="muted small">Your saved answers were restored. Check them before you submit.</p>}
         {lockdown && <p className="muted small">Stay on this page. Leaving it, copying or pasting is recorded and shown to your instructor; after {maxViolations} warnings the quiz is submitted automatically.</p>}
         {notice && <p className="banner" role="alert"><Icon name="alert" /> {notice}</p>}
       </section>
@@ -161,12 +238,12 @@ function QuizRun({ session, quizKey, api, onFinished }) {
             {q.type === "tf"
               ? [[true, "True"], [false, "False"]].map(([v, label]) => (
                 <label className="inline quiz-opt" key={label}>
-                  <input type="radio" name={"q-" + q.id} checked={answers[q.id] === v} onChange={() => setAnswers({ ...answers, [q.id]: v })} /> {label}
+                  <input type="radio" name={"q-" + q.id} checked={answers[q.id] === v} onChange={() => choose(q.id, v)} /> {label}
                 </label>
               ))
               : q.options.map((o) => (
                 <label className="inline quiz-opt" key={o.index}>
-                  <input type="radio" name={"q-" + q.id} checked={answers[q.id] === o.index} onChange={() => setAnswers({ ...answers, [q.id]: o.index })} /> {o.label}
+                  <input type="radio" name={"q-" + q.id} checked={answers[q.id] === o.index} onChange={() => choose(q.id, o.index)} /> {o.label}
                 </label>
               ))}
           </div>
@@ -215,11 +292,13 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
 
   const begin = async (q) => {
     const rules = [
-      q.timeLimit ? "You have " + q.timeLimit + " minute" + (q.timeLimit === 1 ? "" : "s") + ". The clock starts now and keeps running even if you close the page." : "",
+      q.timeLimit && !q.started ? "You have " + q.timeLimit + " minute" + (q.timeLimit === 1 ? "" : "s") + ". The clock starts now and keeps running even if you close the page." : "",
+      q.timeLimit && q.started ? "The clock has kept running since you started." : "",
+      q.started ? "Your saved answers will be restored." : "Your answers are saved as you go.",
       q.lockdown ? "Leaving this page (another tab or app, home screen, screen lock), copying or pasting is recorded. After " + q.maxViolations + " warnings the quiz is submitted automatically. See \"What counts as cheating\" for the full list." : "",
       "You can submit only once.",
     ].filter(Boolean).join("\n\n");
-    if (!window.confirm('Start "' + q.title + '"?\n\n' + rules)) return;
+    if (!window.confirm((q.started ? 'Resume "' : 'Start "') + q.title + '"?\n\n' + rules)) return;
     setBusy(true);
     setError("");
     try { setSession(await quizApi.start(q.id)); } catch (e) { setError(errText(e)); load(); } finally { setBusy(false); }

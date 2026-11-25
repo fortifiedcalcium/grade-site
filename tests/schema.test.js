@@ -439,3 +439,71 @@ describe("two instructors teaching the same student", () => {
     expect((await pg.query("select count(*)::int as n from public.admins where is_super")).rows[0].n).toBe(1);   // only the one these tests created
   });
 });
+
+describe("quiz autosave in the database", () => {
+  const save = async (key, answers, rev) => { const v = (await pg.query("select public.save_quiz_answers($1, 'qa', $2::jsonb, $3) as r", [key, JSON.stringify(answers), rev])).rows[0].r; return v == null ? null : Number(v); };
+  const start = async () => (await pg.query("select public.start_quiz('keyas', 'qa') as r")).rows[0].r;
+  beforeAll(async () => {
+    await as("authenticated", ADMIN);
+    await pg.query(`select public.save_sections('[{"id":"auto","name":"Auto"}]')`);
+    await pg.query(`select public.upsert_students('[{"id":"AS1","name":"Ash","sec":"auto","pin":"111111","key":"keyas"}]')`);
+    await pg.query(`insert into public.quizzes (id, sec, title, questions, published, time_limit) values ('qa', 'auto', 'Auto', '[{"id":"x","type":"tf","text":"t","answer":true,"points":1}]', true, 10)`);
+  });
+  it("saves only into an open attempt, and gives the answers back on resume", async () => {
+    await as("anon");
+    expect(await save("keyas", { x: true }, 1)).toBeNull();            // not started
+    const first = await start();
+    expect(first.draft).toBeNull();
+    expect(Number(first.draftRev)).toBe(0);
+    expect(Number(first.started)).toBeGreaterThan(0);
+    expect(await save("keyas", { x: false }, 2)).toBe(2);
+    const again = await start();
+    expect(again.draft).toEqual({ x: false });
+    expect(Number(again.draftRev)).toBe(2);
+    expect(again.started).toBe(first.started);
+    expect(JSON.stringify(again)).not.toContain('"answer"');
+  });
+  it("ignores a late, older save", async () => {
+    await as("anon");
+    expect(await save("keyas", { x: true }, 5)).toBe(5);
+    expect(await save("keyas", { x: false }, 4)).toBe(5);              // reports the newer revision it kept
+    expect((await start()).draft).toEqual({ x: true });
+  });
+  it("refuses a wrong key, anything that is not an object, and huge data; the table itself is closed", async () => {
+    await as("anon");
+    expect(await save("nope", { x: true }, 9)).toBeNull();
+    expect(await save("keyas", [1, 2], 9)).toBeNull();
+    await rejects(pg.query("select public.save_quiz_answers('keyas', 'qa', $1::jsonb, 9)", [JSON.stringify({ x: "a".repeat(30000) })]), /check/);
+    await rejects(pg.query("select * from public.quiz_drafts"), /permission denied/);
+    await as("authenticated", ADMIN);
+    await rejects(pg.query("select * from public.quiz_drafts"), /permission denied/);
+    expect((await pg.query("select answers, submitted from public.quiz_attempts where quiz_id = 'qa'")).rows).toEqual([{ answers: null, submitted: null }]);   // saving is not submitting
+  });
+  it("follows a PIN reset, and closes after the time limit and after submitting", async () => {
+    await as("authenticated", ADMIN);
+    await pg.query("select public.reset_pin('AS1', 'keyas', 'keyas2', '222222')");
+    await as("anon");
+    expect((await pg.query("select public.start_quiz('keyas2', 'qa') as r")).rows[0].r.draft).toEqual({ x: true });
+    await pg.exec("reset role");
+    await pg.query("update public.quiz_attempts set started = now() - interval '11 minutes' where quiz_id = 'qa'");
+    await as("anon");
+    expect(await save("keyas2", { x: false }, 20)).toBeNull();         // time is up
+    await pg.query(`select public.submit_quiz('keyas2', 'qa', '{"x":true}'::jsonb)`);
+    expect(await save("keyas2", { x: false }, 21)).toBeNull();         // submitted
+    await pg.exec("reset role");
+    expect((await pg.query("select 1 from public.quiz_drafts where quiz_id = 'qa'")).rows).toHaveLength(0);
+  });
+  it("a retake starts with nothing saved", async () => {
+    await as("authenticated", ADMIN);
+    await pg.query("select public.reset_quiz_attempt('qa', 'keyas2')");
+    await as("anon");
+    await pg.query("select public.start_quiz('keyas2', 'qa')");
+    expect(await save("keyas2", { x: false }, 1)).toBe(1);
+    await as("authenticated", ADMIN);
+    await pg.query("select public.reset_quiz_attempt('qa', 'keyas2')");   // removing an open attempt removes its draft
+    await as("anon");
+    expect((await pg.query("select public.start_quiz('keyas2', 'qa') as r")).rows[0].r.draft).toBeNull();
+    await as("authenticated", ADMIN);
+    await pg.query("select public.delete_section('auto')");
+  });
+});
