@@ -65,6 +65,8 @@ input, select, textarea { font: inherit; font-weight: 600; color: var(--text); b
 input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 input[type=file] { box-shadow: none; padding: 6px; }
 input[type=checkbox] { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; padding: 0; box-shadow: var(--shadow-s); border-width: var(--bw-s); background-color: var(--surface); cursor: pointer; flex: none; }
+input[type=radio] { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; min-width: 22px; padding: 0; margin: 0; flex: none; border: var(--bw-s) solid var(--ink); border-radius: 50%; background: var(--surface); box-shadow: none; cursor: pointer; }
+input[type=radio]:checked { background: radial-gradient(circle, var(--focus) 0 42%, var(--surface) 48%); }
 input[type=checkbox]:checked { background-color: var(--accent); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3.2 3.2L13 4.8' fill='none' stroke='%23fff' stroke-width='2.6' stroke-linecap='square'/%3E%3C/svg%3E"); background-size: 100% 100%; }
 
 /* buttons */
@@ -226,7 +228,7 @@ input.cell.over { border-color: var(--danger); border-width: var(--bw); } input.
 @media (pointer: coarse) {
   .btn, .tabs button { min-height: 44px; }
   .btn.small { min-height: 36px; padding: 6px 10px; }
-  select, input:not([type=checkbox]) { min-height: 44px; }
+  select, input:not([type=checkbox]):not([type=radio]) { min-height: 44px; }
   input.cell { min-height: 38px; }
   input[type=checkbox] { width: 20px; height: 20px; }
   .colpick > summary { padding: 8px 0; }
@@ -254,8 +256,15 @@ input.cell.over { border-color: var(--danger); border-width: var(--bw); } input.
 .quiz-lock { -webkit-user-select: none; user-select: none; }
 .quiz-bar { position: sticky; top: 48px; z-index: 5; }
 .quiz-opts { display: grid; gap: 8px; }
-.quiz-opt { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: var(--bw-s) solid var(--ink); background: var(--surface); cursor: pointer; font-weight: 600; }
-.quiz-opt:hover { background: var(--info); color: var(--on-bright); }
+.quiz-pts { white-space: nowrap; }
+.quiz-opt { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 10px 12px; border: var(--bw-s) solid var(--ink); background: var(--surface); cursor: pointer; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; -webkit-tap-highlight-color: transparent; }
+/* hover only with a mouse: on a phone it would stay stuck on the last row touched and look selected */
+@media (hover: hover) { .quiz-opt:hover { background: var(--info); color: var(--on-bright); } }
+/* the whole row shows which answer is chosen */
+.quiz-opt:has(input:checked), .quiz-opt:has(input:checked):hover { background: var(--primary); color: var(--on-bright); font-weight: 800; box-shadow: var(--shadow-s); }
+.quiz-opt input[type=radio]:checked { border-color: #111; background: radial-gradient(circle, #111 0 42%, #fff 48%); }
+.quiz-opt:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }
+.quiz-opt input[type=radio]:focus-visible { outline: none; }   /* the row shows the focus ring */
 .tag.warn { background: var(--danger); color: var(--on-danger); }
 .qedit { border: var(--bw-s) solid var(--ink); padding: 10px; margin: 10px 0; background: var(--bg); }
 .review-item { border: var(--bw-s) solid var(--ink); padding: 8px 10px; margin: 8px 0; background: var(--surface); }
@@ -271,3 +280,27 @@ input.cell.over { border-color: var(--danger); border-width: var(--bw); } input.
 .quiz-rules ul { margin: 6px 0; padding-left: 22px; }
 .quiz-rules li { margin: 3px 0; }
 .card > .quiz-rules:only-child { margin: 0; }
+
+/* quiz dashboard */
+.viewswitch { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+.viewswitch button { font: inherit; font-weight: 700; padding: 7px 14px; background: var(--surface); color: var(--text); border: var(--bw-s) solid var(--ink); box-shadow: var(--shadow-s); cursor: pointer; }
+.viewswitch button.on { background: var(--ink); color: var(--on-ink); font-weight: 800; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(170px, 45%), 1fr)); gap: 12px; margin: 0 4px 20px 0; }
+.stat-tile { display: grid; gap: 2px; align-content: start; padding: 12px 14px; background: var(--surface); border: var(--bw) solid var(--ink); box-shadow: var(--shadow-m); }
+.stat-label { font-size: .85rem; font-weight: 700; color: var(--text-2); }
+.stat-value { font-size: 2rem; line-height: 1.15; font-weight: 800; }
+.stat-note { font-size: .82rem; color: var(--text-2); }
+.meter { display: flex; align-items: center; gap: 8px; min-width: 150px; }
+.meter-track { flex: 1; height: 10px; min-width: 60px; background: var(--bg); border: 1px solid var(--ink); }
+.meter-track > span { display: block; height: 100%; background: var(--focus); border-radius: 0 4px 4px 0; }
+.meter-text { white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 700; }
+.names { margin: 6px 0 0; padding-left: 18px; font-size: .9rem; }
+.linklike { font: inherit; font-weight: 700; text-align: left; padding: 0; border: 0; background: none; color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.stat-icon { display: grid; place-items: center; width: 40px; height: 40px; margin-bottom: 6px; border: var(--bw-s) solid var(--ink); box-shadow: var(--shadow-s); color: var(--on-bright); }
+.stat-icon.t-quiz { background: var(--primary); }
+.stat-icon.t-done { background: var(--success); }
+.stat-icon.t-score { background: var(--g-activities); }
+.stat-icon.t-live { background: var(--info); }
+.stat-icon.t-review { background: var(--g-midterm); }
+.reason { display: inline-flex; align-items: center; gap: 5px; margin-right: 14px; }
+.grid thead th .icon { margin-right: 2px; }

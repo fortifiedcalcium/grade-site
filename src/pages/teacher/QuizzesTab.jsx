@@ -1,5 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Icon from "../../Icon.jsx";
+import QuizDashboard from "./QuizDashboard.jsx";
 import { SectionPicker, useSectionPicker } from "../../lib/sectionPicker.jsx";
 import { QUIZ_TEMPLATE_ROWS, blankQuestion, blankQuiz, newQuizId, parseQuizRows, questionStats, quizProblems, reviewAttempt, totalPoints } from "../../lib/quiz.js";
 import { deleteQuiz, resetQuizAttempt, saveQuiz } from "../../lib/db.js";
@@ -201,7 +202,7 @@ function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew
     try { await deleteQuiz(db, id); onDone(); } catch (e) { setMsg("Not deleted: " + e.message); }
   };
   return (
-    <details className="card" open={isNew || undefined}>
+    <details className="card" id={"quiz-" + id} open={isNew || undefined}>
       <summary><strong>{quiz.title || "New quiz"}</strong> <span className="tag">{quiz.published ? "Published" : "Draft"}</span> <span className="muted small">{quiz.questions.length} question{quiz.questions.length === 1 ? "" : "s"} · {fmtNum(totalPoints(quiz.questions))} pts{taken ? " · " + taken + " attempt" + (taken === 1 ? "" : "s") : ""}</span></summary>
       <div className="form-grid">
         <label className="span2"><Icon name="tag" /> Title<input value={quiz.title} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. Quiz 1: Arrays" /></label>
@@ -256,22 +257,39 @@ export default function QuizzesTab({ db, sections, quizzes, attempts, records })
   const picker = useSectionPicker(sections);
   const secId = picker.activeId;
   const [draft, setDraft] = useState(null);
+  const [view, setView] = useState("dashboard");
+  const [jump, setJump] = useState(null);   // a quiz picked on the dashboard: show it opened in the manage view
+  useEffect(() => {
+    if (view !== "manage" || !jump) return;
+    const el = document.getElementById("quiz-" + jump);
+    if (el) { el.open = true; if (el.scrollIntoView) el.scrollIntoView({ block: "start" }); }
+    setJump(null);
+  }, [view, jump]);
+  const students = Object.entries(records || {}).filter(([, r]) => r.sec === secId);
   const list = Object.entries(quizzes || {}).filter(([, q]) => q.sec === secId).sort((a, b) => (a[1].updated || 0) - (b[1].updated || 0));
   const attemptsOf = (qid) => Object.values(attempts || {}).filter((a) => a.quizId === qid);
   return (
     <>
       <div className="row toolbar">
         <SectionPicker picker={picker} sections={sections} />
-        <button type="button" className="btn primary" disabled={!secId || !!draft} onClick={() => setDraft({ id: newQuizId(), quiz: blankQuiz(secId) })}><Icon name="plus" /> New quiz</button>
+        <button type="button" className="btn primary" disabled={!secId || !!draft} onClick={() => { setDraft({ id: newQuizId(), quiz: blankQuiz(secId) }); setView("manage"); }}><Icon name="plus" /> New quiz</button>
+      </div>
+      <div className="viewswitch" role="group" aria-label="Quiz view">
+        <button type="button" className={view === "dashboard" ? "on" : ""} aria-pressed={view === "dashboard"} onClick={() => setView("dashboard")}><Icon name="summary" /> Dashboard</button>
+        <button type="button" className={view === "manage" ? "on" : ""} aria-pressed={view === "manage"} onClick={() => setView("manage")}><Icon name="quiz" /> Manage quizzes ({list.length})</button>
       </div>
       {Object.keys(sections).length === 0 && <p className="muted">No sections yet. Add one in Settings first.</p>}
-      {draft && draft.quiz.sec === secId && (
-        <QuizEditor key={draft.id} db={db} id={draft.id} initial={draft.quiz} section={sections[secId]} roster={{}} records={records} attempts={[]} isNew onDone={() => setDraft(null)} />
-      )}
-      {secId && list.length === 0 && !draft && <p className="muted">No quizzes in this section yet. Press "New quiz" to build one.</p>}
-      {list.map(([id, q]) => (
-        <QuizEditor key={id} db={db} id={id} initial={q} section={sections[secId]} roster={{}} records={records} attempts={attemptsOf(id)} onDone={() => {}} />
-      ))}
+      {view === "dashboard" && secId && <QuizDashboard key={secId} quizzes={list} attempts={attempts} students={students} onOpenQuiz={(id) => { setView("manage"); setJump(id); }} />}
+      {/* kept on the page while hidden, so switching views never throws away unsaved edits */}
+      <div hidden={view !== "manage"}>
+        {draft && draft.quiz.sec === secId && (
+          <QuizEditor key={draft.id} db={db} id={draft.id} initial={draft.quiz} section={sections[secId]} roster={{}} records={records} attempts={[]} isNew onDone={() => setDraft(null)} />
+        )}
+        {secId && list.length === 0 && !draft && <p className="muted">No quizzes in this section yet. Press "New quiz" to build one.</p>}
+        {list.map(([id, q]) => (
+          <QuizEditor key={id} db={db} id={id} initial={q} section={sections[secId]} roster={{}} records={records} attempts={attemptsOf(id)} onDone={() => {}} />
+        ))}
+      </div>
     </>
   );
 }

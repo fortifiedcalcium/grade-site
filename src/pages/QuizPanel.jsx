@@ -233,7 +233,7 @@ function QuizRun({ session, quizKey, api, onFinished }) {
 
       {questions.map((q, n) => (
         <section className="card" key={q.id}>
-          <p><strong>{n + 1}.</strong> {q.text} <span className="muted small">({fmtNum(Number(q.points) || 1)} pt{Number(q.points) === 1 ? "" : "s"})</span></p>
+          <p><strong>{n + 1}.</strong> {q.text} <span className="muted small quiz-pts">({fmtNum(Number(q.points) || 1)} pt{Number(q.points) === 1 ? "" : "s"})</span></p>
           <div className="quiz-opts" role="radiogroup" aria-label={"Question " + (n + 1)}>
             {q.type === "tf"
               ? [[true, "True"], [false, "False"]].map(([v, label]) => (
