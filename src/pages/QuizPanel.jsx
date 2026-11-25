@@ -33,7 +33,8 @@ function QuizRules({ maxViolations, open }) {
         After <strong>{maxViolations} warning{maxViolations === 1 ? "" : "s"}</strong> your quiz is submitted automatically with the answers you have so far.
         Things that happen within 1.5 seconds of each other count once. Your instructor sees each warning and the time it happened.
         Closing or reloading the page does not stop the timer or clear your warnings. Your answers are saved as you go: if the
-        page closes, sign in again and press Resume quiz.
+        page closes, sign in again and press Resume quiz. If your submit arrives after the time limit, only the answers that were
+        saved online in time are graded: answers shown as "Saved on this device only" do not count.
       </p>
       <p className="small"><strong>Before you start:</strong> turn on Do Not Disturb, close other apps and tabs, charge your device, and keep your screen from turning off by itself.</p>
     </details>
@@ -295,6 +296,7 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
       q.timeLimit && !q.started ? "You have " + q.timeLimit + " minute" + (q.timeLimit === 1 ? "" : "s") + ". The clock starts now and keeps running even if you close the page." : "",
       q.timeLimit && q.started ? "The clock has kept running since you started." : "",
       q.started ? "Your saved answers will be restored." : "Your answers are saved as you go.",
+      q.timeLimit ? "If your submit arrives late, only answers saved online in time (\"Answers saved\") are graded." : "",
       q.lockdown ? "Leaving this page (another tab or app, home screen, screen lock), copying or pasting is recorded. After " + q.maxViolations + " warnings the quiz is submitted automatically. See \"What counts as cheating\" for the full list." : "",
       "You can submit only once.",
     ].filter(Boolean).join("\n\n");
@@ -327,7 +329,9 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
         <section className="card" role="status">
           <h2><Icon name="check" size={20} /> Quiz submitted</h2>
           {result.late
-            ? <p className="bad">Your time ran out before you submitted, so this attempt scored 0.</p>
+            ? result.graded > 0
+              ? <p className="bad">Your submit arrived after the time limit, so only the {result.graded} answer{result.graded === 1 ? "" : "s"} saved in time {result.graded === 1 ? "was" : "were"} graded: {fmtNum(Number(result.points))} / {fmtNum(Number(result.total))}.</p>
+              : <p className="bad">Your submit arrived after the time limit{result.graded === 0 ? " and no answers were saved in time" : ""}, so this attempt scored 0.</p>
             : <p className="ok">{result.title ? result.title + ": " : ""}you scored {fmtNum(Number(result.points))} / {fmtNum(Number(result.total))}.</p>}
           <p className="muted small">The score is now in your grades.</p>
         </section>
@@ -341,7 +345,7 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
           <p className="muted small">{q.count} question{q.count === 1 ? "" : "s"} · {fmtNum(Number(q.total))} points{q.timeLimit ? " · " + q.timeLimit + " min" : ""}</p>
           {q.submitted ? (
             <>
-              <p className={q.late ? "bad" : "ok"}>{q.late ? "Submitted late: 0" : "Done: " + fmtNum(Number(q.points)) + " / " + fmtNum(Number(q.attemptTotal))}</p>
+              <p className={q.late ? "bad" : "ok"}>{(q.late ? "Submitted late: " : "Done: ") + fmtNum(Number(q.points)) + " / " + fmtNum(Number(q.attemptTotal))}</p>
               {q.showAnswers && !q.late && <p><button type="button" className="btn small" disabled={busy} onClick={() => openReview(q)}><Icon name="eye" /> {review && review.id === q.id ? "Hide answers" : "Review answers"}</button></p>}
               {review && review.id === q.id && <Review review={review.items} />}
             </>

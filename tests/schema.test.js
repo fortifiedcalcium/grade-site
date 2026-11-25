@@ -507,3 +507,50 @@ describe("quiz autosave in the database", () => {
     await pg.query("select public.delete_section('auto')");
   });
 });
+
+describe("a late submit is graded on the answers saved in time", () => {
+  const QS = JSON.stringify([
+    { id: "a", type: "tf", text: "a", answer: true, points: 2 },
+    { id: "b", type: "tf", text: "b", answer: true, points: 1 },
+    { id: "c", type: "tf", text: "c", answer: true, points: 1 },
+  ]);
+  const r = async (sql, params) => (await pg.query(sql, params)).rows[0].r;
+  const begin = async (key) => { await as("anon"); await pg.query("select public.start_quiz($1, 'ql')", [key]); };
+  const save = async (key, answers, rev) => { await as("anon"); return r("select public.save_quiz_answers($1, 'ql', $2::jsonb, $3) as r", [key, JSON.stringify(answers), rev]); };
+  const submit = async (key, answers) => { await as("anon"); return r("select public.submit_quiz($1, 'ql', $2::jsonb) as r", [key, JSON.stringify(answers)]); };
+  const age = async (key, interval) => { await pg.exec("reset role"); await pg.query(`update public.quiz_attempts set started = now() - interval '${interval}' where quiz_id = 'ql' and key = $1`, [key]); };
+  const stored = async (key) => { await pg.exec("reset role"); return (await pg.query("select a.points::int as points, a.late, a.answers, (e.scores ->> 'li')::numeric::int as grade from public.quiz_attempts a join public.enrollments e on e.key = a.key where a.quiz_id = 'ql' and a.key = $1", [key])).rows[0]; };
+  const ALL = { a: true, b: true, c: true };
+  beforeAll(async () => {
+    await as("authenticated", ADMIN);
+    await pg.query(`select public.save_sections('[{"id":"late","name":"Late"}]')`);
+    await pg.query(`select public.upsert_students('[{"id":"L1","name":"One","sec":"late","pin":"1","key":"kl1"},{"id":"L2","name":"Two","sec":"late","pin":"2","key":"kl2"},{"id":"L3","name":"Three","sec":"late","pin":"3","key":"kl3"}]')`);
+    await pg.query(`insert into public.quizzes (id, sec, title, item_key, item_max, questions, published, time_limit, show_answers) values ('ql', 'late', 'Late', 'li', 100, $1::jsonb, true, 10, true)`, [QS]);
+  });
+  it("counts what was saved before the cutoff, and nothing added or changed afterwards", async () => {
+    await begin("kl1");
+    await save("kl1", { a: true, b: false }, 1);                 // saved in time: one right, one wrong
+    await age("kl1", "11 minutes");
+    expect(await save("kl1", ALL, 2)).toBeNull();                // too late to save the rest
+    const out = await submit("kl1", ALL);                        // sends perfect answers, late
+    expect(out).toMatchObject({ late: true, points: 2, total: 4, graded: 2, review: null });
+    expect(Number(out.score)).toBe(50);
+    expect(await stored("kl1")).toEqual({ points: 2, late: true, answers: { a: true, b: false }, grade: 50 });
+  });
+  it("scores 0 when nothing was saved in time", async () => {
+    await begin("kl2");
+    await age("kl2", "11 minutes");
+    expect(await submit("kl2", ALL)).toMatchObject({ late: true, points: 0, graded: 0 });
+    expect(await stored("kl2")).toEqual({ points: 0, late: true, answers: {}, grade: 0 });
+  });
+  it("still grades what is sent when the submit is within the 30 seconds of grace", async () => {
+    await begin("kl3");
+    await save("kl3", { a: false }, 1);
+    await age("kl3", "10 minutes 20 seconds");
+    const out = await submit("kl3", ALL);
+    expect(out).toMatchObject({ late: false, points: 4 });
+    expect(out.graded).toBeNull();
+    await as("authenticated", ADMIN);
+    await pg.query("select public.delete_section('late')");
+  });
+});

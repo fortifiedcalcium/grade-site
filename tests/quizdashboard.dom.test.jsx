@@ -46,7 +46,7 @@ describe("quiz dashboard numbers", () => {
     const x = buildDashboard({ quizzes: mine, students, now: NOW, attempts: { l: att("q1", "k1", { late: true, points: 0 }), o: att("q1", "k2") } });
     expect(x.totals.average).toBe(100);
     expect(x.totals.submitted).toBe(2);
-    expect(x.review[0].reasons).toEqual(["submitted late, scored 0"]);
+    expect(x.review[0].reasons).toEqual(["submitted late: 0 / 2 from answers saved in time"]);
   });
   it("copes with nothing to show", () => {
     const x = buildDashboard({ quizzes: [], attempts: {}, students: [], now: NOW });

@@ -159,7 +159,7 @@ create table if not exists public.quiz_attempts (
   answers    jsonb,
   violations int not null default 0,
   events     jsonb not null default '[]',                -- [{ t (ms), type }]: what the page noticed (tab switch, paste, ...)
-  late       boolean not null default false,             -- submitted after the time limit: scored 0
+  late       boolean not null default false,             -- submitted after the time limit: graded only on answers saved in time
   primary key (quiz_id, key)
 );
 
@@ -619,10 +619,11 @@ begin
 end $$;
 
 -- Scores the answers on the server ({ questionId: choice index | true | false }) and puts the result in the grade item.
--- After the time limit (30 seconds of grace for the network) the attempt is recorded as late and scores 0.
+-- After the time limit (30 seconds of grace for the network) the attempt is recorded as late, and what is sent is ignored: only the
+-- answers the server itself saved in time (save_quiz_answers refuses anything later) are graded. With none saved it scores 0.
 create or replace function public.submit_quiz(p_key text, p_quiz text, p_answers jsonb) returns jsonb
   language plpgsql security definer set search_path = public as $$
-declare q public.quizzes; a public.quiz_attempts; pts numeric := 0; tot numeric := 0; is_late boolean; shown numeric; rev jsonb;
+declare q public.quizzes; a public.quiz_attempts; pts numeric := 0; tot numeric := 0; is_late boolean; shown numeric; rev jsonb; graded jsonb;
 begin
   -- `for update` locks the attempt: a second submit arriving at the same moment waits, then sees it is already submitted
   select * into a from public.quiz_attempts where quiz_id = p_quiz and key = p_key for update;
@@ -631,10 +632,15 @@ begin
   select * into q from public.quizzes where id = p_quiz;
   if jsonb_typeof(p_answers) is distinct from 'object' then p_answers := '{}'::jsonb; end if;
   is_late := q.time_limit is not null and now() > a.started + make_interval(mins => q.time_limit) + interval '30 seconds';
+  graded := p_answers;
+  if is_late then
+    select answers into graded from public.quiz_drafts where quiz_id = p_quiz and key = p_key;
+    graded := coalesce(graded, '{}'::jsonb);
+  end if;
   select coalesce(sum(coalesce((x ->> 'points')::numeric, 1)), 0),
-         coalesce(sum(case when not is_late and p_answers -> (x ->> 'id') = x -> 'answer' then coalesce((x ->> 'points')::numeric, 1) else 0 end), 0)
+         coalesce(sum(case when graded -> (x ->> 'id') = x -> 'answer' then coalesce((x ->> 'points')::numeric, 1) else 0 end), 0)
     into tot, pts from jsonb_array_elements(q.questions) x;
-  update public.quiz_attempts set submitted = now(), points = pts, total = tot, late = is_late, answers = p_answers
+  update public.quiz_attempts set submitted = now(), points = pts, total = tot, late = is_late, answers = graded
    where quiz_id = p_quiz and key = p_key;
   delete from public.quiz_drafts where quiz_id = p_quiz and key = p_key;
   if q.item_key is not null and q.item_max is not null and tot > 0 then
@@ -642,7 +648,8 @@ begin
     update public.enrollments set scores = jsonb_set(scores, array[q.item_key], to_jsonb(shown)), acknowledged = null, updated = now() where key = p_key;
   end if;
   rev := public.quiz_review(p_key, p_quiz);
-  return jsonb_build_object('points', pts, 'total', tot, 'late', is_late, 'score', shown, 'review', rev);
+  return jsonb_build_object('points', pts, 'total', tot, 'late', is_late, 'score', shown, 'review', rev,
+    'graded', case when is_late then (select count(*) from jsonb_object_keys(graded)) end);   -- late: how many saved answers counted
 end $$;
 
 -- Lets a student take a quiz again: removes the attempt and the score it wrote.

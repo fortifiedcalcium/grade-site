@@ -92,3 +92,19 @@ describe("draft rules", () => {
     expect(draftName(KEY, "qz", 222)).not.toBe(name);   // a retake starts clean
   });
 });
+
+describe("late submit message", () => {
+  const finish = async (result) => {
+    await open({ submit: vi.fn(async () => result) });
+    fireEvent.click(screen.getByLabelText("four"));
+    fireEvent.click(screen.getByRole("button", { name: /submit quiz/i }));
+    await screen.findByText(/arrived after the time limit/i);
+    return document.body.textContent;
+  };
+  it("says how many saved answers were graded", async () => {
+    expect(await finish({ late: true, points: 1, total: 2, graded: 1 })).toMatch(/only the 1 answer saved in time was graded: 1 \/ 2/i);
+  });
+  it("says so when nothing was saved in time", async () => {
+    expect(await finish({ late: true, points: 0, total: 2, graded: 0 })).toMatch(/no answers were saved in time, so this attempt scored 0/i);
+  });
+});

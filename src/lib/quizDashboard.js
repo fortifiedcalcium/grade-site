@@ -1,8 +1,8 @@
 /* The numbers behind the instructor's quiz dashboard, for one section. Plain functions, so they can be tested.
 
    quizzes: [[id, quiz]] of the section; attempts: every attempt (others are ignored); students: [[key, record]] of the section.
-   Only published quizzes count towards completion and averages. A "late" attempt scored 0 by rule, so it is listed for review
-   but left out of the averages and the question statistics. */
+   Only published quizzes count towards completion and averages. A "late" attempt is graded only on the answers saved in
+   time, so it is listed for review but left out of the averages and the question statistics. */
 import { questionStats } from "./quiz.js";
 
 const GRACE_MS = 30000;   // the server accepts a submit this long after the limit
@@ -33,7 +33,7 @@ export function buildDashboard({ quizzes, attempts, students, now = Date.now() }
       if (a.violations > 0) flagged++;
       const reasons = [
         a.violations > 0 && a.violations + " warning" + (a.violations === 1 ? "" : "s") + (atLimit ? " (reached the limit)" : ""),
-        a.late && "submitted late, scored 0",
+        a.late && "submitted late: " + (a.points ?? 0) + " / " + (a.total ?? 0) + " from answers saved in time",
         over && "time ran out, never submitted",
       ].filter(Boolean);
       const kinds = [a.violations > 0 && "warning", a.late && "late", over && "unsubmitted"].filter(Boolean);   // same order as reasons

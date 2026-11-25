@@ -86,7 +86,7 @@ function AttemptDetail({ quiz, attempt }) {
   const rows = reviewAttempt(quiz, attempt.answers);
   return (
     <div>
-      {attempt.late && <p className="muted small">Submitted after the time limit, so it scored 0. These are the answers that were sent.</p>}
+      {attempt.late && <p className="muted small">The submit arrived after the time limit. It is graded only on the answers the server saved in time, shown here.</p>}
       {rows.map((r, n) => (
         <div className={"review-item " + (r.right ? "right" : "wrong")} key={r.q.id}>
           <p><strong>{n + 1}.</strong> {r.q.text} <span className={r.right ? "ok" : "bad"}>{r.right ? "Correct" : r.yours ? "Wrong" : "No answer"}</span></p>
@@ -124,7 +124,7 @@ function Results({ db, quiz, quizId, students, attempts }) {
               <React.Fragment key={key}>
               <tr>
                 <td>{r.name} <span className="muted small">{studentNo(a ? a.id : key)}</span></td>
-                <td>{!a ? "Not started" : a.submitted ? (a.late ? "Late (0)" : "Submitted") : "In progress"}</td>
+                <td>{!a ? "Not started" : a.submitted ? (a.late ? "Late" : "Submitted") : "In progress"}</td>
                 <td className="num">{a && a.submitted ? fmtNum(a.points) + " / " + fmtNum(a.total) : "–"}</td>
                 <td className={"num" + (a && a.violations >= quiz.maxViolations && quiz.lockdown ? " bad" : "")}>{a ? a.violations : "–"}</td>
                 <td className="small">{a && a.events.length ? a.events.map((e) => (EVENT_LABEL[e.type] || e.type) + " " + new Date(e.t).toLocaleTimeString()).join(", ") : ""}{a && a.submitted ? <span className="muted"> · submitted {when(a.submitted)}</span> : null}</td>
