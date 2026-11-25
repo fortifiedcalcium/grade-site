@@ -1,5 +1,5 @@
 /**
- * Grade Portal PIN mail merge (Google Sheets + Gmail).
+ * ALAB Student Portal PIN mail merge (Google Sheets + Gmail).
  *
  * Sends each student their student number, PIN and the sign-in link from YOUR Gmail account.
  * Setup: see README.md in this folder. Paste this file into Extensions > Apps Script of the sheet that
@@ -18,20 +18,20 @@ var REQUIRED_HEADERS = ["Email", "Student no.", "Name", "PIN"];
 var MAX_RUN_MS = 5 * 60 * 1000; // Apps Script stops a run at 6 minutes; stop early and resume next time
 
 var TEMPLATE_ROWS = [
-  ["Subject", "Your grade portal PIN ({{Section}})"],
-  ["Sender name", "BulSU CICT Grade Portal"],
+  ["Subject", "Your ALAB Student Portal PIN ({{Section}})"],
+  ["Sender name", "ALAB Student Portal"],
   ["Reply-to email", ""],
   ["Email pattern (only used when a row's Email is blank; {id} = student number in lowercase)", ""],
   ["Only send to section (leave blank for everyone)", ""],
   [
     "Message",
     "Hi {{First name}},\n\n" +
-      "You can now check your grades online.\n\n" +
+      "You can now sign in to the ALAB Student Portal to check your grades and take your quizzes for {{Section}}.\n\n" +
       "Website: {{Link}}\n" +
       "Student number: {{Student no.}}\n" +
       "PIN: {{PIN}}\n\n" +
-      "Sign in with your student number and this PIN. Your PIN is private: please do not share it with anyone. " +
-      "If you lose it, reply to this email and I will issue a new one.\n\n" +
+      "Enter your student number and PIN, then press Sign in. Keep your PIN private and do not share it with anyone. " +
+      "If you get a different PIN for another section, keep both. If you lose your PIN, reply to this email and I will issue a new one.\n\n" +
       "Regards,\nYour instructor",
   ],
 ];
@@ -227,7 +227,7 @@ function markSkipped_(sheet, skipped, statusCol) {
 function deliver_(to, config, values, subjectPrefix) {
   var subject = (subjectPrefix || "") + renderTemplate_(config.subject, values, false);
   var options = {
-    name: config.sender || "Grade Portal",
+    name: config.sender || "ALAB Student Portal",
     htmlBody: buildHtmlBody_(config.body, values),
   };
   if (config.replyTo) options.replyTo = config.replyTo;

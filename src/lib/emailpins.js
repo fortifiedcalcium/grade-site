@@ -11,12 +11,12 @@ export const DEFAULT_TEMPLATE = {
   pattern: "",
   body:
     "Hi {{First name}},\n\n" +
-    "You can now check your grades online.\n\n" +
+    "You can now sign in to the ALAB Student Portal to check your grades and take your quizzes for {{Section}}.\n\n" +
     "Website: {{Link}}\n" +
     "Student number: {{Student no.}}\n" +
     "PIN: {{PIN}}\n\n" +
-    "Sign in with your student number and this PIN. Your PIN is private: please do not share it with anyone. " +
-    "If you lose it, reply to this email and I will issue a new one.\n\n" +
+    "Enter your student number and PIN, then press Sign in. Keep your PIN private and do not share it with anyone. " +
+    "If you get a different PIN for another section, keep both. If you lose your PIN, reply to this email and I will issue a new one.\n\n" +
     "Regards,\nYour instructor",
 };
 
