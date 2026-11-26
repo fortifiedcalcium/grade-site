@@ -322,8 +322,17 @@ create policy meta_read        on public.meta        for select to anon, authent
 create policy meta_write       on public.meta        for all    to authenticated using (public.is_admin()) with check (public.is_admin());
 create policy subjects_read    on public.subjects    for select to anon, authenticated using (true);
 create policy sections_read    on public.sections    for select to anon, authenticated using (true);   -- students see their section's grading scheme
-create policy students_read    on public.students    for select to authenticated using (public.can_see_student(student_no));
-create policy enrollments_read on public.enrollments for select to authenticated using (public.can_manage_section(sec));
+-- These two are written so the database works the caller out ONCE per query, not once per row: a helper function called for every
+-- row (can_manage_section, can_see_student) made a full read of enrollments slow, because each row ran its own lookups and each
+-- student row scanned enrollments again. The (select ...) parts are evaluated one time; "sec in (...)" is a hashed list of the
+-- caller's sections. Who can see what is unchanged: an instructor sees the enrollments of the sections they own (a super
+-- instructor, all of them), and a student's name only when one of those enrollments is theirs (enrollments_read already limits
+-- the subquery to the caller's sections). The helper functions stay, for the other policies and the functions below.
+create policy students_read    on public.students    for select to authenticated
+  using (exists (select 1 from public.enrollments e where e.student_no = students.student_no));
+create policy enrollments_read on public.enrollments for select to authenticated
+  using ((select public.is_admin())
+         and ((select public.is_super()) or sec in (select x.id from public.sections x where x.owner = (select auth.uid()))));
 create policy quizzes_all      on public.quizzes     for all    to authenticated using (public.can_manage_section(sec)) with check (public.can_manage_section(sec));
 create policy attempts_read    on public.quiz_attempts for select to authenticated using (public.can_manage_quiz(quiz_id));
 create policy attempts_del     on public.quiz_attempts for delete to authenticated using (public.can_manage_quiz(quiz_id));

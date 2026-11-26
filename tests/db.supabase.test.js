@@ -205,6 +205,24 @@ describe("listen", () => {
     const bad = () => ({ select() { return this; }, order() { return this; }, range: () => Promise.resolve({ data: null, error: { message: "boom" } }) });
     await expect(readPages(() => bad(), ["id"])).rejects.toMatchObject({ message: "boom" });
   });
+  it("serves the roster and the records from one read of enrollments", async () => {
+    const enr = { login_id: "S1", student_no: "S1", sec: "a", pin: "ABC234", key: "k1", scores: { q1: 1 }, acknowledged: null, emailed: null, updated: null, students: { name: "Ana", email: "ana@example.com" } };
+    const db = fakeClient({ tables: { enrollments: [enr] } });
+    const roster = [], records = [];
+    const { listenEnrollments } = await import("../src/lib/db.js");
+    const stop = listenEnrollments(db, (v) => roster.push(v), (v) => records.push(v), () => {});
+    await new Promise((r) => setTimeout(r, 20));
+    expect(roster.at(-1)).toEqual({ S1: { name: "Ana", sec: "a", pin: "ABC234", key: "k1", email: "ana@example.com", emailed: null } });
+    expect(records.at(-1)).toEqual({ k1: { id: "S1", name: "Ana", sec: "a", s: { q1: 1 }, updated: null, ack: null } });
+    expect(db.reads.filter((x) => x[0] === "enrollments" && x[1] === "read")).toHaveLength(1);   // one read, not two
+    db.reads.length = 0;
+    enr.scores = { q1: 9 };
+    db.emit({ eventType: "UPDATE", new: { login_id: "S1", key: "k1" } });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(db.reads.filter((x) => x[1] === "login_id")).toEqual([["enrollments", "login_id", ["S1"]]]);   // and only that row again
+    expect(records.at(-1).k1.s).toEqual({ q1: 9 });
+    stop();
+  });
   it("saves a section through save_sections, without its count or owner", async () => {
     const { saveSection } = await import("../src/lib/db.js");
     const calls = [];

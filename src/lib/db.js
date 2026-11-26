@@ -134,6 +134,8 @@ export function createStudentApi(db) {
    other tables whose changes matter too. */
 const enrollmentSelect = "*, students(name, email)";
 const nameOf = (r) => (r.students && r.students.name) || "";
+const rosterOf = (rows) => Object.fromEntries([...rows.values()].map((r) => [r.login_id, { name: nameOf(r), sec: r.sec, pin: r.pin, key: r.key, email: (r.students && r.students.email) || "", emailed: ms(r.emailed) }]));
+const recordsOf = (rows) => Object.fromEntries([...rows.values()].map((r) => [r.key, { id: r.login_id, name: nameOf(r), sec: r.sec, s: r.scores || {}, updated: ms(r.updated), ack: ms(r.acknowledged) }]));
 const SOURCES = {
   meta: { table: "meta", pk: "id", shape: (rows) => toMeta([...rows.values()][0]) },
   // the owner (an instructor's user id) rides along so the screens can show only the signed-in instructor's sections
@@ -143,11 +145,16 @@ const SOURCES = {
   },
   roster: {
     table: "enrollments", select: enrollmentSelect, also: ["students"], reload: true, pk: "login_id", scope: "login_id",
-    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.login_id, { name: nameOf(r), sec: r.sec, pin: r.pin, key: r.key, email: (r.students && r.students.email) || "", emailed: ms(r.emailed) }])),
+    shape: (rows) => rosterOf(rows),
   },
   records: {
     table: "enrollments", select: enrollmentSelect, also: ["students"], reload: true, pk: "key", scope: "key",
-    shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.key, { id: r.login_id, name: nameOf(r), sec: r.sec, s: r.scores || {}, updated: ms(r.updated), ack: ms(r.acknowledged) }])),
+    shape: (rows) => recordsOf(rows),
+  },
+  // the roster and the records are two views of the same rows: one read serves both (see listenEnrollments)
+  enrollments: {
+    table: "enrollments", select: enrollmentSelect, also: ["students"], reload: true, pk: "login_id", scope: "login_id",
+    shape: (rows) => ({ roster: rosterOf(rows), records: recordsOf(rows) }),
   },
 };
 
@@ -264,6 +271,12 @@ export function listen(db, path, onValueCb, onError) {
     clearTimeout(timer);
     db.removeChannel(channel);
   };
+}
+
+/* The roster and the records come from the same table, so they are read once and split, instead of the table being read twice
+   for every change. Returns a function that stops listening. */
+export function listenEnrollments(db, onRoster, onRecords, onError) {
+  return listen(db, "enrollments", (v) => { onRoster(v.roster); onRecords(v.records); }, onError);
 }
 
 export async function isTeacher(db, user) {

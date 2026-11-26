@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import Icon from "../../Icon.jsx";
 import logo from "../../logo.js";
 import { getAuth, getDb } from "../../supabase.js";
-import { isTeacher, listen } from "../../lib/db.js";
+import { isTeacher, listen, listenEnrollments } from "../../lib/db.js";
 import { describeAuthError } from "../../lib/authErrors.js";
 import GradesTab from "./GradesTab.jsx";
 import PinsTab from "./PinsTab.jsx";
@@ -116,8 +116,7 @@ export function Dashboard({ user, initialTab = "grades" }) {
     const offs = [
       listen(db, "meta", setMeta, onErr),
       listen(db, "sections", setSections, onErr),
-      listen(db, "roster", setRoster, onErr),
-      listen(db, "records", setRecords, onErr),
+      listenEnrollments(db, setRoster, setRecords, onErr),
       listen(db, "quizzes", setQuizzes, onErr),
       listen(db, "attempts", setAttempts, onErr),
     ];
