@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import Icon from "../Icon.jsx";
+import Busy from "../Busy.jsx";
 import logo from "../logo.js";
 import { getDb } from "../supabase.js";
 import { createStudentApi } from "../lib/db.js";
@@ -191,10 +192,12 @@ export default function StudentPortal() {
   const [id, setId] = useState("");
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
+  const [what, setWhat] = useState("Please wait…");   // what the wait box says
   const [error, setError] = useState("");
   const [data, setData] = useState(null);
 
-  const run = async (fn) => {
+  const run = async (fn, label = "Please wait…") => {
+    setWhat(label);
     setBusy(true);
     setError("");
     try {
@@ -210,7 +213,7 @@ export default function StudentPortal() {
   const submit = (e) => {
     e.preventDefault();
     if (!id.trim() || !pin.trim()) return setError("Enter your student number and PIN.");
-    run(() => api.login(id, pin));
+    run(() => api.login(id, pin), "Signing you in…");
   };
 
   // a student in several sections: keep the list for the switcher, and refresh this section's entry in it
@@ -234,13 +237,14 @@ export default function StudentPortal() {
   if (data) {
     return (
       <>
+        <Busy show={busy} text={what} />
         {error && <div className="banner" role="alert"><Icon name="alert" /> {error}</div>}
         <GradeView data={data} busy={busy}
-          onRefresh={() => run(async () => keepOthers(await api.refresh(data.key)))}
-          onSwitch={(key) => run(async () => keepOthers(await api.refresh(key)))}
-          onAcknowledge={() => run(async () => { await api.acknowledge(data.key); return keepOthers(await api.refresh(data.key)); })}
+          onRefresh={() => run(async () => keepOthers(await api.refresh(data.key)), "Refreshing your grades…")}
+          onSwitch={(key) => run(async () => keepOthers(await api.refresh(key)), "Loading that class…")}
+          onAcknowledge={() => run(async () => { await api.acknowledge(data.key); return keepOthers(await api.refresh(data.key)); }, "Saving your acknowledgment…")}
           quizApi={quizApi}
-          onQuizSubmitted={() => run(async () => keepOthers(await api.refresh(data.key)))}
+          onQuizSubmitted={() => run(async () => keepOthers(await api.refresh(data.key)), "Updating your grades…")}
           onLogout={logout} />
       </>
     );
@@ -248,6 +252,7 @@ export default function StudentPortal() {
 
   return (
     <main className="shell narrow">
+      <Busy show={busy} text={what} />
       <form className="card login" onSubmit={submit}>
         <img className="logo" src={logo} alt="Bulacan State University" />
         <h1><Icon name="scores" size={22} /> ALAB Student Portal</h1>

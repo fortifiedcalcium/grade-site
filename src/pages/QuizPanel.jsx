@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Icon from "../Icon.jsx";
+import Busy from "../Busy.jsx";
 import { answerLabel, fmtClock, presentQuestions } from "../lib/quiz.js";
 import { fmtNum } from "../lib/util.js";
 import { draftName, readDraft, removeDraft, restoreDraft, writeDraft } from "../lib/quizDraft.js";
@@ -267,6 +268,7 @@ function QuizRun({ session, quizKey, api, onFinished }) {
         </section>
       ))}
       {error && <p className="error" role="alert"><Icon name="alert" /> {error}</p>}
+      <Busy show={busy} text="Submitting your quiz… Please do not close this page." />
       <p><button type="button" className="btn primary" onClick={clickSubmit} disabled={busy}><Icon name="check" /> {busy ? "Submitting…" : "Submit quiz"}</button></p>
     </div>
   );
@@ -300,6 +302,7 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
   const [session, setSession] = useState(null);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [busyText, setBusyText] = useState("Please wait…");
   const [review, setReview] = useState(null);   // { id, items } of the quiz whose answers are open
 
   const load = useCallback(async () => {
@@ -317,6 +320,7 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
       "You can submit only once.",
     ].filter(Boolean).join("\n\n");
     if (!window.confirm((q.started ? 'Resume "' : 'Start "') + q.title + '"?\n\n' + rules)) return;
+    setBusyText(q.started ? "Resuming your quiz…" : "Starting your quiz…");
     setBusy(true);
     setError("");
     try { setSession(await quizApi.start(q.id)); } catch (e) { setError(errText(e)); load(); } finally { setBusy(false); }
@@ -332,6 +336,7 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
 
   const openReview = async (q) => {
     if (review && review.id === q.id) return setReview(null);
+    setBusyText("Loading your answers…");
     setBusy(true);
     setError("");
     try { setReview({ id: q.id, items: (await quizApi.review(q.id)) || [] }); } catch (e) { setError(errText(e)); } finally { setBusy(false); }
@@ -341,6 +346,7 @@ export default function QuizPanel({ quizApi, quizKey, onSubmitted }) {
 
   return (
     <>
+      <Busy show={busy} text={busyText} />
       {result && (
         <section className="card" role="status">
           <h2><Icon name="check" size={20} /> Quiz submitted</h2>

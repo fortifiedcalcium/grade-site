@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import Icon from "../../Icon.jsx";
+import Busy, { useBusy } from "../../Busy.jsx";
 import { termOf, termsOf, LEGACY_TERM } from "../../lib/terms.js";
 import TermSelect from "../../lib/TermSelect.jsx";
 import { codeOf, recalledTerm, rememberTerm } from "../../lib/sectionPicker.jsx";
@@ -11,6 +12,7 @@ const NO_CODE = "__none";
 function SectionEditor({ db, id, section, roster, terms }) {
   const [s, setS] = useState(() => JSON.parse(JSON.stringify(section)));
   const [msg, setMsg] = useState("");
+  const [w, working] = useBusy();
   const setCat = (ci, patch) => setS({ ...s, scheme: { ...s.scheme, categories: s.scheme.categories.map((c, i) => (i === ci ? { ...c, ...patch } : c)) } });
   const setItem = (ci, ii, patch) => setCat(ci, { items: s.scheme.categories[ci].items.map((it, i) => (i === ii ? { ...it, ...patch } : it)) });
   const addItem = (ci) => {
@@ -37,21 +39,22 @@ function SectionEditor({ db, id, section, roster, terms }) {
   const removeSection = async () => {
     const ok = window.confirm('Delete the section "' + s.name + '"' + (students ? " and its " + students + " student" + (students === 1 ? "" : "s") + ", with all scores" : "") + "? This cannot be undone.");
     if (!ok) return;
-    try { await deleteSection(db, id); setDeleted(true); } catch (e) { setMsg("Not deleted: " + e.message); }
+    try { await working("Deleting the section…", () => deleteSection(db, id)); setDeleted(true); } catch (e) { setMsg("Not deleted: " + e.message); }
   };
   const clearScores = async () => {
     if (!students) return setMsg("This section has no students.");
     if (!window.confirm('Clear ALL scores for the ' + students + ' student' + (students === 1 ? "" : "s") + ' in "' + s.name + '"? Students and PINs stay. This cannot be undone.')) return;
-    try { await clearSectionScores(db, id, roster); setMsg("Cleared the scores of " + students + " student" + (students === 1 ? "" : "s") + "."); } catch (e) { setMsg("Not cleared: " + e.message); }
+    try { await working("Clearing the scores…", () => clearSectionScores(db, id, roster)); setMsg("Cleared the scores of " + students + " student" + (students === 1 ? "" : "s") + "."); } catch (e) { setMsg("Not cleared: " + e.message); }
   };
   if (deleted) return null;
   const total = s.scheme.categories.reduce((a, c) => a + (Number(c.weight) || 0), 0);
   const save = async () => {
     setMsg("");
-    try { await saveSection(db, id, s); setMsg("Saved."); } catch (e) { setMsg("Not saved: " + e.message); }
+    try { await working("Saving the section…", () => saveSection(db, id, s)); setMsg("Saved."); } catch (e) { setMsg("Not saved: " + e.message); }
   };
   return (
     <details className="card">
+      <Busy show={!!w} text={w || ""} />
       <summary><strong>{s.name}</strong> {codeOf(section) && <span className="tag">{codeOf(section)}</span>} <span className="tag">{termOf(s)}</span></summary>
       <div className="form-grid">
         <label><Icon name="calendar" /> Semester<TermSelect value={s.term == null ? termOf(s) : s.term} known={terms} onChange={(v) => setS({ ...s, term: v })} /></label>
@@ -102,6 +105,7 @@ function SectionEditor({ db, id, section, roster, terms }) {
 export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
   const [m, setM] = useState({ title: meta.title || "", term: meta.term || "", note: meta.note || "" });
   const [msg, setMsg] = useState("");
+  const [w, working] = useBusy();
   const [newName, setNewName] = useState("");
   const [secMsg, setSecMsg] = useState("");
   const terms = termsOf(sections);
@@ -129,21 +133,22 @@ export default function SettingsTab({ db, meta, sections, roster, takenIds }) {
   const tagAll = async () => {
     setTagMsg("");
     try {
-      for (const [sid, x] of untagged) await saveSection(db, sid, { ...x, term: LEGACY_TERM });
+      await working("Saving…", async () => { for (const [sid, x] of untagged) await saveSection(db, sid, { ...x, term: LEGACY_TERM }); });
       setTagMsg("Saved " + LEGACY_TERM + " on " + untagged.length + " section" + (untagged.length === 1 ? "" : "s") + ".");
     } catch (err) { setTagMsg("Not saved: " + err.message); }
   };
   const save = async (e) => {
     e.preventDefault();
-    try { await saveMeta(db, m); setMsg("Saved."); } catch (err) { setMsg("Not saved: " + err.message); }
+    try { await working("Saving the settings…", () => saveMeta(db, m)); setMsg("Saved."); } catch (err) { setMsg("Not saved: " + err.message); }
   };
   const createSection = async (e) => {
     e.preventDefault();
     setSecMsg("");
-    try { await addSection(db, sections, newName, newTerm, takenIds); setNewName(""); pickShown(newTerm.trim()); setSecMsg("Section added. Open it below to set its grading scheme."); } catch (err) { setSecMsg(err.message); }
+    try { await working("Adding the section…", () => addSection(db, sections, newName, newTerm, takenIds)); setNewName(""); pickShown(newTerm.trim()); setSecMsg("Section added. Open it below to set its grading scheme."); } catch (err) { setSecMsg(err.message); }
   };
   return (
     <>
+      <Busy show={!!w} text={w || ""} />
       <form className="card" onSubmit={save}>
         <h2><Icon name="settings" /> Page details</h2>
         <div className="form-grid">

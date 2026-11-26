@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import Icon from "../../Icon.jsx";
+import Busy, { useBusy } from "../../Busy.jsx";
 import QuizDashboard from "./QuizDashboard.jsx";
 import { SectionPicker, useSectionPicker } from "../../lib/sectionPicker.jsx";
 import { QUIZ_TEMPLATE_ROWS, blankQuestion, blankQuiz, newQuizId, parseQuizRows, questionStats, quizProblems, reviewAttempt, totalPoints } from "../../lib/quiz.js";
@@ -99,16 +100,18 @@ function AttemptDetail({ quiz, attempt }) {
 
 function Results({ db, quiz, quizId, students, attempts }) {
   const [msg, setMsg] = useState("");
+  const [w, working] = useBusy();
   const [open, setOpen] = useState(null);   // key of the student whose answers are shown
   const byKey = Object.fromEntries(attempts.map((a) => [a.key, a]));
   const rows = students.map(([key, r]) => ({ key, r, a: byKey[key] }));
   const reset = async (key, name) => {
     if (!window.confirm("Let " + name + " take this quiz again? Their attempt" + (quiz.itemKey ? " and the score it recorded" : "") + " will be removed.")) return;
-    try { await resetQuizAttempt(db, quizId, key); setMsg(name + " can retake the quiz."); } catch (e) { setMsg("Not reset: " + e.message); }
+    try { await working("Allowing a retake…", () => resetQuizAttempt(db, quizId, key)); setMsg(name + " can retake the quiz."); } catch (e) { setMsg("Not reset: " + e.message); }
   };
   const flagged = attempts.filter((a) => a.violations > 0).length;
   return (
     <>
+      <Busy show={!!w} text={w || ""} />
       <p className="muted small">
         {attempts.filter((a) => a.submitted).length} submitted, {attempts.filter((a) => !a.submitted).length} in progress, {students.length - attempts.length} not started
         {flagged > 0 && <> · <strong>{flagged}</strong> with anti-cheat warnings</>}.
@@ -147,6 +150,7 @@ function Results({ db, quiz, quizId, students, attempts }) {
 function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew, onDone }) {
   const [quiz, setQuiz] = useState(() => JSON.parse(JSON.stringify(initial)));
   const [msg, setMsg] = useState("");
+  const [w, working] = useBusy();
   const [importMsg, setImportMsg] = useState({ ok: true, text: "" });
   const fileRef = useRef(null);
   const items = orderedCategories(section && section.scheme).flatMap((c) => (c.items || []).map((i) => ({ ...i, cat: c.title })));
@@ -191,7 +195,7 @@ function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew
     const problems = quizProblems(next);
     if (problems.length) return setMsg(problems.join(" "));
     try {
-      await saveQuiz(db, id, next);
+      await working("Saving the quiz…", () => saveQuiz(db, id, next));
       setQuiz(next);
       setMsg(next.published ? "Saved. Students can see this quiz." : "Saved as a draft. Students cannot see it yet.");
       if (isNew) onDone();
@@ -199,10 +203,11 @@ function QuizEditor({ db, id, initial, section, roster, records, attempts, isNew
   };
   const remove = async () => {
     if (!window.confirm('Delete the quiz "' + (quiz.title || "untitled") + '"' + (taken ? " and the " + taken + " attempt" + (taken === 1 ? "" : "s") + " recorded for it" : "") + "? Scores already in the grades stay. This cannot be undone.")) return;
-    try { await deleteQuiz(db, id); onDone(); } catch (e) { setMsg("Not deleted: " + e.message); }
+    try { await working("Deleting the quiz…", () => deleteQuiz(db, id)); onDone(); } catch (e) { setMsg("Not deleted: " + e.message); }
   };
   return (
     <details className="card" id={"quiz-" + id} open={isNew || undefined}>
+      <Busy show={!!w} text={w || ""} />
       <summary><strong>{quiz.title || "New quiz"}</strong> <span className="tag">{quiz.published ? "Published" : "Draft"}</span> <span className="muted small">{quiz.questions.length} question{quiz.questions.length === 1 ? "" : "s"} · {fmtNum(totalPoints(quiz.questions))} pts{taken ? " · " + taken + " attempt" + (taken === 1 ? "" : "s") : ""}</span></summary>
       <div className="form-grid">
         <label className="span2"><Icon name="tag" /> Title<input value={quiz.title} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. Quiz 1: Arrays" /></label>

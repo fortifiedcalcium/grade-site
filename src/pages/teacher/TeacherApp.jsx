@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Icon from "../../Icon.jsx";
+import Busy from "../../Busy.jsx";
 import logo from "../../logo.js";
 import { getAuth, getDb } from "../../supabase.js";
 import { isTeacher, listen, listenEnrollments } from "../../lib/db.js";
@@ -50,6 +51,7 @@ function SignIn() {
   };
   return (
     <main className="shell narrow">
+      <Busy show={busy} text={register ? "Creating your account…" : "Signing you in…"} />
       <form className="card login" onSubmit={submit}>
         <img className="logo" src={logo} alt="Bulacan State University" />
         <h1><Icon name="user" size={22} /> {register ? "Create instructor account" : "Instructor sign in"}</h1>

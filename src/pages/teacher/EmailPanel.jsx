@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import Busy from "../../Busy.jsx";
 import { markEmailed, sendPinEmails } from "../../lib/db.js";
 import { DEFAULT_TEMPLATE, PLACEHOLDERS, MAX_BATCH, buildPlan, renderMessage, isValidEmail } from "../../lib/emailpins.js";
 
@@ -72,6 +73,7 @@ export default function EmailPanel({ db, user, roster, sections, activeId, selec
 
   return (
     <div className="card noprint" role="region" aria-label="Email PINs">
+      <Busy show={busy} text="Working on the emails… Please keep this page open." />
       <div className="row"><strong>Email PINs to students</strong><button className="btn small ghost" onClick={onClose}>Close</button></div>
       <p className="muted small">Each student gets only their own PIN, sent from the site (replies go to {t.replyTo || me || "you"}). Type emails in the Email column, or use **Import emails (CSV)** in the toolbar above.</p>
       <div className="row">

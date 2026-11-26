@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import Icon from "../../Icon.jsx";
+import Busy from "../../Busy.jsx";
 import { computeGrade, inRecordOrder, isNum } from "../../lib/grading.js";
 import { studentNo } from "../../lib/keys.js";
 import { SectionPicker, useSectionPicker } from "../../lib/sectionPicker.jsx";
@@ -155,6 +156,7 @@ export default function GradesTab({ db, meta, sections, roster, records, goImpor
 
   return (
     <>
+      <Busy show={busy} text="Saving your changes…" />
       <div className="row toolbar">
         <SectionPicker picker={picker} sections={sections} />
         <input className="search" placeholder="Search name or number" value={q} onChange={(e) => setQ(e.target.value)} />

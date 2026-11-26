@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import Icon from "../../Icon.jsx";
+import Busy from "../../Busy.jsx";
 import { sheetsFromWorkbook, parseClassRecord } from "../../lib/importer.js";
 import { importData } from "../../lib/db.js";
 import { LEGACY_TERM, termsOf } from "../../lib/terms.js";
@@ -46,6 +47,7 @@ export default function ImportTab({ db, meta, sections, roster, takenIds }) {
 
   return (
     <>
+      <Busy show={busy} text={"Importing students… " + progress + (parsed ? " of " + parsed.students.length : "")} />
       <div className="card">
         <h2><Icon name="import" /> Import class record (.xlsx)</h2>
         <p className="muted">

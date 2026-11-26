@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import Icon from "../../Icon.jsx";
+import Busy from "../../Busy.jsx";
 import { addStudent, removeStudent, removeStudents, resetPin, saveEmails, markEmailed } from "../../lib/db.js";
 import { useSelection } from "../../lib/useSelection.js";
 import { csvCell, downloadText } from "../../lib/util.js";
@@ -95,6 +96,7 @@ export default function PinsTab({ db, meta, sections, roster, user }) {
 
   return (
     <>
+      <Busy show={busy} text="Saving your changes…" />
       <div className="row toolbar">
         <SectionPicker picker={picker} sections={sections} />
         <input className="search" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
