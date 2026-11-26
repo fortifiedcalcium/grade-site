@@ -129,23 +129,24 @@ export function createStudentApi(db) {
 
 /* ---------------------------- teacher side ---------------------------- */
 
-/* `reload` sources join several tables, so a realtime event cannot be patched into the copy in memory: the table is read again
-   instead. `also` lists other tables whose changes matter too. */
+/* `reload` sources join several tables, so a realtime event cannot be patched into the copy in memory: the rows it names are
+   read again instead (`scope` is the column that names them), or the whole table when the event does not say. `also` lists
+   other tables whose changes matter too. */
 const enrollmentSelect = "*, students(name, email)";
 const nameOf = (r) => (r.students && r.students.name) || "";
 const SOURCES = {
   meta: { table: "meta", pk: "id", shape: (rows) => toMeta([...rows.values()][0]) },
   // the owner (an instructor's user id) rides along so the screens can show only the signed-in instructor's sections
   sections: {
-    table: "sections", select: SECTION_SELECT, also: ["subjects"], reload: true, pk: "id",
+    table: "sections", select: SECTION_SELECT, also: ["subjects"], reload: true, pk: "id", scope: "id",
     shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.id, { ...toSection(r), owner: r.owner || null }])),
   },
   roster: {
-    table: "enrollments", select: enrollmentSelect, also: ["students"], reload: true, pk: "login_id",
+    table: "enrollments", select: enrollmentSelect, also: ["students"], reload: true, pk: "login_id", scope: "login_id",
     shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.login_id, { name: nameOf(r), sec: r.sec, pin: r.pin, key: r.key, email: (r.students && r.students.email) || "", emailed: ms(r.emailed) }])),
   },
   records: {
-    table: "enrollments", select: enrollmentSelect, also: ["students"], reload: true, pk: "key",
+    table: "enrollments", select: enrollmentSelect, also: ["students"], reload: true, pk: "key", scope: "key",
     shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.key, { id: r.login_id, name: nameOf(r), sec: r.sec, s: r.scores || {}, updated: ms(r.updated), ack: ms(r.acknowledged) }])),
   },
 };
@@ -159,7 +160,7 @@ SOURCES.quizzes = {
   }])),
 };
 SOURCES.attempts = {
-  table: "quiz_attempts", select: "*, enrollments(login_id, students(name))", reload: true, pk: ["quiz_id", "key"],
+  table: "quiz_attempts", select: "*, enrollments(login_id, students(name))", reload: true, pk: ["quiz_id", "key"], scope: "quiz_id",
   shape: (rows) => Object.fromEntries([...rows.values()].map((r) => [r.quiz_id + "|" + r.key, {
     quizId: r.quiz_id, key: r.key, id: (r.enrollments && r.enrollments.login_id) || "", name: (r.enrollments && r.enrollments.students && r.enrollments.students.name) || "", started: ms(r.started), submitted: ms(r.submitted),
     points: r.points == null ? null : Number(r.points), total: r.total == null ? null : Number(r.total),
@@ -168,39 +169,80 @@ SOURCES.attempts = {
 };
 
 const POLL_MS = 30000;
+const REFRESH_MS = 200;      // events that arrive within this time are one read
+const MAX_SCOPED = 50;       // more changed rows than this and the whole table is read instead
 
-/* Calls onValueCb with the whole table now and again whenever it changes. Realtime events patch the copy in memory (or, for
-   tables joined with others, read it again); a slow refresh is a safety net in case realtime is off or the connection drops.
+/* Calls onValueCb with the whole table now and again whenever it changes. Realtime events patch the copy in memory. For tables
+   joined with others, only the rows an event names are read again (never the whole table for one student's change), and events
+   arriving close together share one read. The reads run one at a time, so a late answer cannot overwrite a newer one. A slow
+   refresh is a safety net in case realtime is off or the connection drops; it is skipped while the page is in the background.
    Returns a function that stops listening. */
 export function listen(db, path, onValueCb, onError) {
   const src = SOURCES[path];
   let rows = new Map();
   let alive = true;
   let timer = null;
+  let running = false;
+  let full = true;                 // the first read is of the whole table
+  let pending = new Set();         // values of src.scope whose rows must be read again
   const pkOf = (r) => (Array.isArray(src.pk) ? src.pk.map((c) => r[c]).join("|") : r[src.pk]);
   const emit = () => alive && onValueCb(src.shape(rows));
 
-  const load = async () => {
+  const readAll = async () => {
     const { data, error } = await db.from(src.table).select(src.select || "*");
-    if (!alive) return;
-    if (error) return onError && onError(error);
+    if (error) throw error;
     rows = new Map(data.map((r) => [pkOf(r), r]));
-    emit();
   };
-  const reloadSoon = () => { clearTimeout(timer); timer = setTimeout(load, 200); };   // several events in a row are one read
+  const readScoped = async (values) => {
+    const { data, error } = await db.from(src.table).select(src.select || "*").in(src.scope, values);
+    if (error) throw error;
+    const gone = new Set(values);
+    for (const [k, r] of rows) if (gone.has(r[src.scope])) rows.delete(k);
+    for (const r of data) rows.set(pkOf(r), r);
+  };
+
+  const flush = async () => {
+    if (running) return;           // the loop below picks up what arrived meanwhile
+    running = true;
+    try {
+      while (alive && (full || pending.size)) {
+        const values = [...pending];
+        pending = new Set();
+        try {
+          if (full || values.length > MAX_SCOPED) { full = false; await readAll(); }
+          else await readScoped(values);
+        } catch (error) {
+          full = true;             // whatever was lost is picked up by the next refresh
+          if (alive && onError) onError(error);
+          break;
+        }
+        emit();
+      }
+    } finally { running = false; }
+  };
+  const soon = () => { if (!timer && alive) timer = setTimeout(() => { timer = null; flush(); }, REFRESH_MS); };   // not reset by later events, so a steady stream still gets read
+  const changed = (row) => {
+    const v = row && src.scope ? row[src.scope] : undefined;
+    if (v === undefined || v === null) full = true; else pending.add(v);
+    soon();
+  };
 
   let channel = db.channel("rt-" + path + "-" + Math.random().toString(36).slice(2));
   channel = channel.on("postgres_changes", { event: "*", schema: "public", table: src.table }, (p) => {
-    if (src.reload) return reloadSoon();
+    if (src.reload) return changed(p.eventType === "DELETE" ? p.old : p.new);
     if (p.eventType === "DELETE") rows.delete(pkOf(p.old));
     else rows.set(pkOf(p.new), p.new);
     emit();
   });
-  (src.also || []).forEach((table) => { channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, reloadSoon); });
-  channel.subscribe((status) => { if (status === "SUBSCRIBED") load(); });
+  (src.also || []).forEach((table) => { channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, () => { full = true; soon(); }); });
+  channel.subscribe((status) => { if (status === "SUBSCRIBED") { full = true; soon(); } });
 
-  load();
-  const poll = setInterval(load, POLL_MS);
+  flush();
+  const poll = setInterval(() => {
+    if (typeof document !== "undefined" && document.hidden) return;
+    full = true;
+    flush();
+  }, POLL_MS);
   return () => {
     alive = false;
     clearInterval(poll);

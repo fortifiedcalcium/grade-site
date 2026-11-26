@@ -6,25 +6,31 @@ import { describeAuthError } from "../src/lib/authErrors.js";
 /* A stand-in for the Supabase client that supports just the calls db.js makes. */
 function fakeClient({ tables = {}, rpc = {} } = {}) {
   const handlers = [];
+  const reads = [];
   const client = {
+    reads,
     from(table) {
-      const q = { rows: tables[table] || [], filters: [] };
+      const q = { rows: tables[table] || [], filters: [], log: (c, v) => reads.push([table, c, v]) };
+      reads.push([table, "read"]);
       const api = {
         select() { return api; },
         eq(col, val) { q.filters.push([col, val]); return api; },
+        in(col, vals) { q.filters.push([col, vals]); q.log && q.log(col, vals); return api; },
         maybeSingle() { return Promise.resolve({ data: result()[0] || null, error: null }); },
         then(res, rej) { return Promise.resolve({ data: result(), error: null }).then(res, rej); },
       };
-      const result = () => q.rows.filter((r) => q.filters.every(([c, v]) => r[c] === v));
+      const result = () => q.rows.filter((r) => q.filters.every(([c, v]) => (Array.isArray(v) ? v.includes(r[c]) : r[c] === v)));
       return api;
     },
     rpc: (name, args) => Promise.resolve({ data: rpc[name] ? rpc[name](args) : null, error: null }),
     channel() {
-      const ch = { on: (_t, _f, cb) => { handlers.push(cb); return ch; }, subscribe: () => ch };
+      let first = true;
+      const ch = { on: (_t, f, cb) => { handlers.push({ table: f && f.table, primary: first, cb }); first = false; return ch; }, subscribe: () => ch };
       return ch;
     },
     removeChannel() {},
-    emit: (payload) => handlers.forEach((h) => h(payload)),
+    /* like Supabase, an event goes only to the listeners of its own table (payload.table; the listener's main table when absent) */
+    emit: (payload) => handlers.filter((h) => (payload.table ? h.table === payload.table : h.primary)).forEach((h) => h.cb(payload)),
   };
   return client;
 }
@@ -96,6 +102,78 @@ describe("listen", () => {
     db.emit({ eventType: "INSERT", new: { login_id: "S2" } });   // the event has no student name; the table is read again
     await new Promise((r) => setTimeout(r, 300));
     expect(Object.values(seen.at(-1)).map((r) => r.name)).toEqual(["Ana", "Ben"]);
+    stop();
+  });
+  it("reads again only the rows an event names, and several events share one read", async () => {
+    const table = [
+      { login_id: "S1", sec: "a", pin: "P", key: "k1", scores: {}, students: { name: "Ana" } },
+      { login_id: "S2", sec: "a", pin: "P", key: "k2", scores: {}, students: { name: "Ben" } },
+    ];
+    const db = fakeClient({ tables: { enrollments: table } });
+    const seen = [];
+    const stop = listen(db, "records", (v) => seen.push(v), () => {});
+    await new Promise((r) => setTimeout(r, 0));
+    db.reads.length = 0;
+    table[0].scores = { q1: 5 };
+    db.emit({ eventType: "UPDATE", new: { key: "k1", login_id: "S1" } });
+    db.emit({ eventType: "UPDATE", new: { key: "k1", login_id: "S1" } });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(db.reads.filter((x) => x[1] === "key")).toEqual([["enrollments", "key", ["k1"]]]);   // one read, for that one row
+    expect(db.reads.filter((x) => x[1] === "read")).toHaveLength(1);                           // the table was not read in full
+    expect(seen.at(-1).k1.s).toEqual({ q1: 5 });
+    expect(seen.at(-1).k2.name).toBe("Ben");
+    stop();
+  });
+  it("drops a deleted row and picks up a new one without reading the whole table", async () => {
+    const table = [
+      { quiz_id: "q", key: "k1", enrollments: { login_id: "S1", students: { name: "Ana" } } },
+      { quiz_id: "q", key: "k2", enrollments: { login_id: "S2", students: { name: "Ben" } } },
+    ];
+    const db = fakeClient({ tables: { quiz_attempts: table } });
+    const seen = [];
+    const stop = listen(db, "attempts", (v) => seen.push(v), () => {});
+    await new Promise((r) => setTimeout(r, 0));
+    expect(Object.keys(seen.at(-1)).sort()).toEqual(["q|k1", "q|k2"]);
+    db.reads.length = 0;
+    table.splice(0, 1);
+    table.push({ quiz_id: "q", key: "k3", enrollments: { login_id: "S3", students: { name: "Cy" } } });
+    db.emit({ eventType: "DELETE", old: { quiz_id: "q", key: "k1" } });
+    db.emit({ eventType: "INSERT", new: { quiz_id: "q", key: "k3" } });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(Object.keys(seen.at(-1)).sort()).toEqual(["q|k2", "q|k3"]);
+    expect(db.reads.filter((x) => x[1] === "read")).toHaveLength(1);
+    stop();
+  });
+  it("reads the whole table when a student or subject changes, or an event does not say which row", async () => {
+    const table = [{ login_id: "S1", sec: "a", pin: "P", key: "k1", scores: {}, students: { name: "Ana" } }];
+    const db = fakeClient({ tables: { enrollments: table } });
+    const seen = [];
+    const stop = listen(db, "roster", (v) => seen.push(v), () => {});
+    await new Promise((r) => setTimeout(r, 0));
+    db.reads.length = 0;
+    table[0].students = { name: "Anna" };
+    db.emit({ eventType: "UPDATE", new: { student_no: "S1" }, table: "students" });   // no login_id on the event
+    await new Promise((r) => setTimeout(r, 400));
+    expect(db.reads.filter((x) => x[1] === "read")).toHaveLength(1);
+    expect(db.reads.filter((x) => x[1] === "login_id")).toHaveLength(0);
+    expect(seen.at(-1).S1.name).toBe("Anna");
+    stop();
+  });
+  it("reports a failed read and recovers on the next refresh", async () => {
+    let fail = true;
+    const table = [{ login_id: "S1", sec: "a", pin: "P", key: "k1", scores: {}, students: { name: "Ana" } }];
+    const db = fakeClient({ tables: { enrollments: table } });
+    const real = db.from;
+    db.from = (t) => { const a = real(t); const then = a.then; a.then = (res, rej) => (fail ? Promise.resolve({ data: null, error: { message: "boom" } }).then(res, rej) : then(res, rej)); return a; };
+    const seen = [], errors = [];
+    const stop = listen(db, "roster", (v) => seen.push(v), (e) => errors.push(e));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(errors).toHaveLength(1);
+    expect(seen).toHaveLength(0);
+    fail = false;
+    db.emit({ eventType: "UPDATE", new: { login_id: "S1" } });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(seen.at(-1).S1.name).toBe("Ana");
     stop();
   });
   it("saves a section through save_sections, without its count or owner", async () => {
