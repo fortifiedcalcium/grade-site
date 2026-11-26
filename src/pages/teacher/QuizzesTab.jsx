@@ -123,7 +123,7 @@ function Results({ db, quiz, quizId, students, attempts }) {
             {rows.map(({ key, r, a }) => (
               <React.Fragment key={key}>
               <tr>
-                <td>{r.name} <span className="muted small">{studentNo(a ? a.id : key)}</span></td>
+                <td>{r.name} <span className="muted small">{studentNo(a ? a.id : r.id)}</span></td>
                 <td>{!a ? "Not started" : a.submitted ? (a.late ? "Late" : "Submitted") : "In progress"}</td>
                 <td className="num">{a && a.submitted ? fmtNum(a.points) + " / " + fmtNum(a.total) : "–"}</td>
                 <td className={"num" + (a && a.violations >= quiz.maxViolations && quiz.lockdown ? " bad" : "")}>{a ? a.violations : "–"}</td>

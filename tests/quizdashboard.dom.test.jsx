@@ -12,7 +12,7 @@ const questions = [
 ];
 const quiz = (title, over) => ({ sec: "s", title, questions, published: true, timeLimit: 10, lockdown: true, maxViolations: 3, shuffle: true, updated: 1, ...over });
 const quizzes = { q1: quiz("Quiz One"), q2: quiz("Draft Quiz", { published: false, updated: 2 }), other: quiz("Other section", { sec: "x" }) };
-const records = { k1: { sec: "s", name: "Ana" }, k2: { sec: "s", name: "Ben" }, k3: { sec: "s", name: "Cy" }, k4: { sec: "s", name: "Dee" }, k5: { sec: "s", name: "Eli" }, kx: { sec: "x", name: "Zed" } };
+const records = { k1: { sec: "s", name: "Ana" }, k2: { sec: "s", name: "Ben" }, k3: { sec: "s", name: "Cy" }, k4: { sec: "s", name: "Dee" }, k5: { sec: "s", name: "Eli", id: "2026-00005@s" }, kx: { sec: "x", name: "Zed" } };
 const att = (quizId, key, over) => ({ quizId, key, started: NOW - 60000, submitted: NOW - 30000, points: 2, total: 2, violations: 0, events: [], late: false, answers: { a: true, b: true }, ...over });
 const attempts = Object.fromEntries([
   att("q1", "k1"),
@@ -68,6 +68,13 @@ describe("quizzes tab", () => {
     fireEvent.click(within(screen.getByRole("region", { name: "Quizzes at a glance" })).getByRole("button", { name: "Quiz One" }));
     expect(card.closest("div[hidden]")).toBeNull();
     expect(card.open).toBe(true);
+  });
+  it("shows a student number, never the secret key, next to a student who has not started", () => {
+    mount();
+    fireEvent.click(within(screen.getByRole("region", { name: "Quizzes at a glance" })).getByRole("button", { name: "Quiz One" }));
+    const row = screen.getAllByText("Eli").map((el) => el.closest("tr")).find((tr) => tr && tr.textContent.includes("Not started"));
+    expect(row.textContent).toContain("2026-00005");
+    expect(row.textContent).not.toContain("k5");
   });
   it("keeps unsaved edits when switching between the views", () => {
     mount();
