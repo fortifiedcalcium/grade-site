@@ -168,6 +168,22 @@ SOURCES.attempts = {
   }])),
 };
 
+/* The API returns no more than 1000 rows to one request (Supabase's default), and says nothing when it cuts a list short, so a long
+   table is read in pages. The pages are in a fixed order, so no row is skipped or read twice between one page and the next. A page
+   smaller than PAGE is the last one; PAGE is below that limit so a lower limit on the server would still not hide rows silently. */
+export const PAGE = 500;
+export async function readPages(build, orderCols) {
+  const out = [];
+  for (let from = 0; ; from += PAGE) {
+    let q = build();
+    for (const col of orderCols) q = q.order(col);
+    const { data, error } = await q.range(from, from + PAGE - 1);
+    if (error) throw error;
+    out.push(...data);
+    if (data.length < PAGE) return out;
+  }
+}
+
 const POLL_MS = 30000;
 const REFRESH_MS = 200;      // events that arrive within this time are one read
 const MAX_SCOPED = 50;       // more changed rows than this and the whole table is read instead
@@ -188,14 +204,13 @@ export function listen(db, path, onValueCb, onError) {
   const pkOf = (r) => (Array.isArray(src.pk) ? src.pk.map((c) => r[c]).join("|") : r[src.pk]);
   const emit = () => alive && onValueCb(src.shape(rows));
 
+  const orderBy = Array.isArray(src.pk) ? src.pk : [src.pk];
   const readAll = async () => {
-    const { data, error } = await db.from(src.table).select(src.select || "*");
-    if (error) throw error;
+    const data = await readPages(() => db.from(src.table).select(src.select || "*"), orderBy);
     rows = new Map(data.map((r) => [pkOf(r), r]));
   };
   const readScoped = async (values) => {
-    const { data, error } = await db.from(src.table).select(src.select || "*").in(src.scope, values);
-    if (error) throw error;
+    const data = await readPages(() => db.from(src.table).select(src.select || "*").in(src.scope, values), orderBy);
     const gone = new Set(values);
     for (const [k, r] of rows) if (gone.has(r[src.scope])) rows.delete(k);
     for (const r of data) rows.set(pkOf(r), r);

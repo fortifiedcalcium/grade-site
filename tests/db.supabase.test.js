@@ -10,16 +10,22 @@ function fakeClient({ tables = {}, rpc = {} } = {}) {
   const client = {
     reads,
     from(table) {
-      const q = { rows: tables[table] || [], filters: [], log: (c, v) => reads.push([table, c, v]) };
+      const q = { rows: tables[table] || [], filters: [], order: [], range: null, log: (c, v) => reads.push([table, c, v]) };
       reads.push([table, "read"]);
       const api = {
         select() { return api; },
+        order(col) { q.order.push(col); return api; },
+        range(a, b) { q.range = [a, b]; reads.push([table, "range", a, b]); return api; },
         eq(col, val) { q.filters.push([col, val]); return api; },
         in(col, vals) { q.filters.push([col, vals]); q.log && q.log(col, vals); return api; },
         maybeSingle() { return Promise.resolve({ data: result()[0] || null, error: null }); },
         then(res, rej) { return Promise.resolve({ data: result(), error: null }).then(res, rej); },
       };
-      const result = () => q.rows.filter((r) => q.filters.every(([c, v]) => (Array.isArray(v) ? v.includes(r[c]) : r[c] === v)));
+      const result = () => {
+        let out = q.rows.filter((r) => q.filters.every(([c, v]) => (Array.isArray(v) ? v.includes(r[c]) : r[c] === v)));
+        if (q.order.length) out = [...out].sort((x, y) => { for (const c of q.order) { if (x[c] < y[c]) return -1; if (x[c] > y[c]) return 1; } return 0; });
+        return q.range ? out.slice(q.range[0], q.range[1] + 1) : out;
+      };
       return api;
     },
     rpc: (name, args) => Promise.resolve({ data: rpc[name] ? rpc[name](args) : null, error: null }),
@@ -175,6 +181,29 @@ describe("listen", () => {
     await new Promise((r) => setTimeout(r, 400));
     expect(seen.at(-1).S1.name).toBe("Ana");
     stop();
+  });
+  it("reads a table longer than one page in pages, in order, so no row is lost", async () => {
+    const table = Array.from({ length: 1230 }, (_, i) => ({ login_id: "S" + String(i).padStart(4, "0"), sec: "a", pin: "P", key: "k" + i, scores: {}, students: { name: "N" + i } }));
+    const db = fakeClient({ tables: { enrollments: table } });
+    const seen = [];
+    const stop = listen(db, "roster", (v) => seen.push(v), () => {});
+    await new Promise((r) => setTimeout(r, 20));
+    expect(Object.keys(seen.at(-1))).toHaveLength(1230);
+    expect(db.reads.filter((x) => x[1] === "range").map((x) => [x[2], x[3]])).toEqual([[0, 499], [500, 999], [1000, 1499]]);
+    stop();
+  });
+  it("reads a table of exactly one page, and an empty one, without losing or inventing rows", async () => {
+    const { readPages, PAGE } = await import("../src/lib/db.js");
+    const rows = Array.from({ length: PAGE }, (_, i) => ({ id: i }));
+    const db = fakeClient({ tables: { t: rows, e: [] } });
+    const build = (t) => () => db.from(t).select("*");
+    expect(await readPages(build("t"), ["id"])).toHaveLength(PAGE);   // a full page is followed by one more read, which is empty
+    expect(await readPages(build("e"), ["id"])).toEqual([]);
+  });
+  it("stops and reports when a page fails", async () => {
+    const { readPages } = await import("../src/lib/db.js");
+    const bad = () => ({ select() { return this; }, order() { return this; }, range: () => Promise.resolve({ data: null, error: { message: "boom" } }) });
+    await expect(readPages(() => bad(), ["id"])).rejects.toMatchObject({ message: "boom" });
   });
   it("saves a section through save_sections, without its count or owner", async () => {
     const { saveSection } = await import("../src/lib/db.js");
