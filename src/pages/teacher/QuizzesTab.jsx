@@ -121,13 +121,14 @@ function Results({ db, quiz, quizId, students, attempts }) {
       <h3 style={{ margin: "16px 0 6px" }}><Icon name="users" /> Students</h3>
       <div className="scroll">
         <table className="grid">
-          <thead><tr><th>Student</th><th>Status</th><th className="num">Score</th><th className="num">Warnings</th><th>What was recorded</th><th><span className="sr-only">Actions</span></th></tr></thead>
+          <thead><tr><th>Student</th><th>Status</th><th>Started</th><th className="num">Score</th><th className="num">Warnings</th><th>What was recorded</th><th><span className="sr-only">Actions</span></th></tr></thead>
           <tbody>
             {rows.map(({ key, r, a }) => (
               <React.Fragment key={key}>
               <tr>
                 <td>{r.name} <span className="muted small">{studentNo(a ? a.id : r.id)}</span></td>
                 <td>{!a ? "Not started" : a.submitted ? (a.late ? "Late" : "Submitted") : "In progress"}</td>
+                <td className="small">{(a && when(a.started)) || "–"}</td>
                 <td className="num">{a && a.submitted ? fmtNum(a.points) + " / " + fmtNum(a.total) : "–"}</td>
                 <td className={"num" + (a && a.violations >= quiz.maxViolations && quiz.lockdown ? " bad" : "")}>{a ? a.violations : "–"}</td>
                 <td className="small">{a && a.events.length ? a.events.map((e) => (EVENT_LABEL[e.type] || e.type) + " " + new Date(e.t).toLocaleTimeString()).join(", ") : ""}{a && a.submitted ? <span className="muted"> · submitted {when(a.submitted)}</span> : null}</td>
@@ -136,7 +137,7 @@ function Results({ db, quiz, quizId, students, attempts }) {
                   {a && <button type="button" className="btn small" onClick={() => reset(key, r.name)}><Icon name="refresh" /> Allow retake</button>}
                 </span></td>
               </tr>
-              {open === key && a && <tr><td colSpan={6}><AttemptDetail quiz={quiz} attempt={a} /></td></tr>}
+              {open === key && a && <tr><td colSpan={7}><AttemptDetail quiz={quiz} attempt={a} /></td></tr>}
               </React.Fragment>
             ))}
           </tbody>
